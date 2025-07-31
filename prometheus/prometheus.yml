@@ -1,0 +1,30 @@
+global:
+  scrape_interval: 15s       # Scrape metrics every 15 seconds
+  evaluation_interval: 15s   # Evaluate rules every 15 seconds
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  # IoT Security API monitoring
+  - job_name: 'iot-security-api'
+    static_configs:
+      - targets: ['host.docker.internal:5000']  # For Docker Desktop on Windows
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+# Alerting configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           # - alertmanager:9093

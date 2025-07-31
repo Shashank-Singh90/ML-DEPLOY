@@ -1,0 +1,14 @@
+artifact_uri: file:D:/ML Deploy/mlruns/758492186117829049/cb4dc5615256424e99a7819b779624fc/artifacts
+end_time: 1753976523077
+entry_point_name: ''
+experiment_id: '758492186117829049'
+lifecycle_stage: active
+run_id: cb4dc5615256424e99a7819b779624fc
+run_name: RandomForest_Optimized_211146
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1753976506841
+status: 3
+tags: []
+user_id: ASUS

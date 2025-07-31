@@ -1,0 +1,7 @@
+{
+  "model_name": "LogisticRegression",
+  "model_type": "LogisticRegression",
+  "trained_at": "2025-07-31T21:12:03.085899",
+  "feature_count": 42,
+  "training_samples": 40000
+}

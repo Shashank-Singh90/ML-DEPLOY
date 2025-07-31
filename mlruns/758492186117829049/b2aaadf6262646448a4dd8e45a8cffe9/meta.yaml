@@ -1,0 +1,14 @@
+artifact_uri: file:D:/ML Deploy/mlruns/758492186117829049/b2aaadf6262646448a4dd8e45a8cffe9/artifacts
+end_time: 1753957103176
+entry_point_name: ''
+experiment_id: '758492186117829049'
+lifecycle_stage: active
+run_id: b2aaadf6262646448a4dd8e45a8cffe9
+run_name: LogisticRegression_154819
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1753957101801
+status: 3
+tags: []
+user_id: ASUS

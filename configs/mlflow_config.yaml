@@ -1,0 +1,38 @@
+mlflow:
+  # Tracking configuration
+  tracking_uri: "file:./mlruns"  # Local file system
+  experiment_name: "iot-threat-detection"
+  
+  # Model registry
+  model_registry:
+    enabled: true
+    staging_alias: "staging"
+    production_alias: "production"
+  
+  # Experiment settings
+  experiments:
+    default_tags:
+      project: "IoT Cybersecurity"
+      domain: "Network Security"
+      data_source: "Synthetic IoT Traffic"
+    
+    auto_log: true
+    log_models: true
+    log_artifacts: true
+  
+  # Model comparison metrics
+  metrics:
+    primary: "f1_score"
+    secondary: ["precision", "recall", "auc_roc"]
+    threshold_metrics: ["accuracy", "confusion_matrix"]
+  
+  # Hyperparameter optimization
+  hyperopt:
+    max_evals: 50
+    algorithm: "tpe"  # Tree-structured Parzen Estimator
+    
+  # Model deployment
+  deployment:
+    model_stage: "Production"
+    auto_deploy_threshold: 0.95  # F1 score threshold
+    rollback_threshold: 0.90     # Minimum performance before rollback
