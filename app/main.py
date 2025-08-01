@@ -191,7 +191,7 @@ def predict():
             iot_threat_score_gauge.set(sum(recent_threat_scores) / len(recent_threat_scores))
         
         # Calculate attack rate in last hour
-        one_hour_ago = datetime.now() - datetime.timedelta(hours=1)
+        one_hour_ago = datetime.now() - timedelta(hours=1)
         recent_hour_predictions = [
             p for p in recent_predictions 
             if p['timestamp'] > one_hour_ago
@@ -398,7 +398,7 @@ def monitoring_stats():
         uptime = (datetime.now() - start_time).total_seconds()
         
         # Calculate recent statistics
-        one_hour_ago = datetime.now() - datetime.timedelta(hours=1)
+        one_hour_ago = datetime.now() - timedelta(hours=1)
         recent_hour_predictions = [
             p for p in recent_predictions 
             if p['timestamp'] > one_hour_ago
