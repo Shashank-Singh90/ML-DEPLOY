@@ -1,6 +1,28 @@
 version: '3.8'
 
 services:
+  # ML API Service
+  # Add this ml-api service to your existing docker-compose.yml
+  # Add this service to your existing docker-compose.yml
+  ml-api:
+    build: .
+    container_name: iot-ml-api
+    ports:
+      - "5000:5000"
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - ./app:/app/app
+      - ./models:/app/models
+      - ./requirements.txt:/app/requirements.txt
+    working_dir: /app
+    command: gunicorn --bind 0.0.0.0:5000 --timeout 120 app.main:app
+    restart: unless-stopped
+    networks:
+      - monitoring-network
+    depends_on:
+      - prometheus
+
   # Prometheus monitoring
   prometheus:
     image: prom/prometheus:latest

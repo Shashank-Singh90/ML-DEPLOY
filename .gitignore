@@ -1,10 +1,12 @@
 __pycache__/
-*.pyc
-.pytest_cache/
+*.py[cod]
+.venv/
 .env
+.ipynb_checkpoints/
+# data / artifacts (adjust as needed)
+data/
+models/
+checkpoints/
+*.csv
+*.parquet
 .DS_Store
-*.log
-venv/
-env/
-.vscode/
-.idea/

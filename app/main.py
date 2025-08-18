@@ -73,6 +73,13 @@ start_time = datetime.now()
 logger.info("🚀 Initializing IoT Threat Detection System with Monitoring...")
 model_service = ModelService()
 explainer = ModelExplainer(model_service)
+@app.route('/')
+def home():
+    return jsonify({
+        "status": "healthy",
+        "message": "IoT ML API is running",
+        "model_loaded": model_service.model_loaded
+    })
 
 # Set up feature importance gauges
 if hasattr(model_service.model, 'feature_importances_') and model_service.feature_names:
