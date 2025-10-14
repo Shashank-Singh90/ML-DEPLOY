@@ -1,18 +1,7 @@
 {
-  "model_name": "RandomForest_Optimized",
   "model_type": "RandomForestClassifier",
-  "trained_at": "2025-08-01T12:08:45.082893",
-  "feature_count": 42,
-  "training_samples": 40000,
-  "hyperparameters": {
-    "n_estimators": 200,
-    "max_depth": 15,
-    "class_weight": "balanced"
-  },
-  "performance": {
-    "f1_score": 0.9950314673733024,
-    "test_samples": 10000
-  },
+  "trained_at": "2025-09-13T01:29:06.465313",
+  "f1_score": 0.9950314673733024,
   "features": [
     "flow_duration",
     "Duration",
@@ -56,5 +45,10 @@
     "Covariance",
     "Variance",
     "Weight"
-  ]
+  ],
+  "hyperparameters": {
+    "n_estimators": 200,
+    "max_depth": 15,
+    "class_weight": "balanced"
+  }
 }

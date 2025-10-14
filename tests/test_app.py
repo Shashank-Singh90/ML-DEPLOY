@@ -1,6 +1,6 @@
 import pytest
 import json
-from app.app import app
+from app.main import app
 
 @pytest.fixture
 def client():
@@ -14,26 +14,44 @@ def test_health_check(client):
     response = client.get('/health')
     assert response.status_code == 200
     data = json.loads(response.data)
-    assert data['status'] == 'ok'
+    assert data['status'] == 'healthy'
+
+def test_home_endpoint(client):
+    """Test home endpoint"""
+    response = client.get('/')
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['service'] == 'IoT Threat Detection API'
+    assert data['status'] == 'running'
 
 def test_predict_valid_input(client):
-    """Test prediction with valid input"""
+    """Test simple prediction with valid input"""
     test_data = {
-        'features': [5.1, 3.5, 1.4, 0.2]  # Iris setosa features
+        "packet_count": 100,
+        "byte_count": 50000,
+        "duration": 5.0,
+        "syn_flags": 2,
+        "fin_flags": 1,
+        "ack_flags": 10
     }
-    response = client.post('/predict', 
+    response = client.post('/predict',
                           json=test_data,
                           content_type='application/json')
     assert response.status_code == 200
     data = json.loads(response.data)
     assert 'prediction' in data
-    assert 'probability' in data
-    assert 'class_names' in data
+    assert 'confidence' in data
+    assert 'threat_score' in data
 
 def test_predict_invalid_input(client):
     """Test prediction with invalid input"""
     test_data = {
-        'features': [5.1, 3.5]  # Only 2 features instead of 4
+        "packet_count": -100,  # Invalid negative value
+        "byte_count": 50000,
+        "duration": 5.0,
+        "syn_flags": 2,
+        "fin_flags": 1,
+        "ack_flags": 10
     }
     response = client.post('/predict',
                           json=test_data,
@@ -44,7 +62,10 @@ def test_predict_invalid_input(client):
 
 def test_predict_missing_features(client):
     """Test prediction with missing features"""
-    test_data = {}
+    test_data = {
+        "packet_count": 100
+        # Missing required fields
+    }
     response = client.post('/predict',
                           json=test_data,
                           content_type='application/json')

@@ -1,27 +1,24 @@
-version: '3.8'
-
 services:
   # ML API Service
-  # Add this ml-api service to your existing docker-compose.yml
-  # Add this service to your existing docker-compose.yml
-  ml-api:
+  api:
     build: .
-    container_name: iot-ml-api
+    container_name: iot-threat-api
     ports:
       - "5000:5000"
     environment:
       - PYTHONPATH=/app
-    volumes:
-      - ./app:/app/app
-      - ./models:/app/models
-      - ./requirements.txt:/app/requirements.txt
-    working_dir: /app
-    command: gunicorn --bind 0.0.0.0:5000 --timeout 120 app.main:app
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
     restart: unless-stopped
     networks:
-      - monitoring-network
+      - monitoring
     depends_on:
       - prometheus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Prometheus monitoring
   prometheus:
@@ -41,7 +38,7 @@ services:
       - '--web.enable-lifecycle'
     restart: unless-stopped
     networks:
-      - monitoring-network
+      - monitoring
 
   # Grafana dashboards
   grafana:
@@ -51,42 +48,21 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=iot_admin_2025
+      - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
-      - GF_INSTALL_PLUGINS=grafana-piechart-panel
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
     restart: unless-stopped
     networks:
-      - monitoring-network
+      - monitoring
     depends_on:
       - prometheus
-
-  # Node Exporter (system metrics)
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: iot-node-exporter
-    ports:
-      - "9100:9100"
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.rootfs=/rootfs'
-      - '--path.sysfs=/host/sys'
-      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
-    restart: unless-stopped
-    networks:
-      - monitoring-network
 
 volumes:
   prometheus-data:
   grafana-data:
 
 networks:
-  monitoring-network:
+  monitoring:
     driver: bridge

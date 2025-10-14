@@ -1,0 +1,60 @@
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Git and IDE
+.git/
+.gitignore
+.gitattributes
+.github/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
+
+# Data and experimental files
+data/
+notebooks/
+*.csv
+*.json
+mlruns/
+
+# Documentation and scripts
+README.md
+*.md
+scripts/
+.claude/
+
+# Test files
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Docker files (avoid recursion)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Development
+.mypy_cache/

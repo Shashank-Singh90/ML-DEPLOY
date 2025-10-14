@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm:*)",
+      "Bash(python:*)",
+      "Bash(grep:*)",
+      "Bash(activate)",
+      "Bash(pip install:*)",
+      "Bash(docker build:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker-compose logs:*)",
+      "Bash(docker-compose:*)",
+      "Bash(curl:*)",
+      "Bash(findstr:*)",
+      "Bash(dir /a-d)",
+      "Bash(start /B python:*)",
+      "Bash(timeout:*)",
+      "Bash(docker:*)",
+      "Bash(dir /b modelsproduction)",
+      "Bash(dir:*)",
+      "Bash(pytest:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,3 +1,4 @@
+"""Model explainer for IoT threat detection predictions."""
 import pandas as pd
 import numpy as np
 from typing import Dict, Any, List
@@ -7,146 +8,152 @@ import os
 logger = logging.getLogger(__name__)
 
 class ModelExplainer:
+    """Provides explanations for IoT threat detection model predictions."""
+
     def __init__(self, model_service):
+        """Initialize explainer with model service."""
         self.model_service = model_service
-        self.explainer = None
-        self.setup_explainer()
+        self.explainer_available = None
+        self._initialize_explainer()
     
-    def setup_explainer(self):
-        """Initialize simplified explainer (without SHAP for now)"""
+    def _initialize_explainer(self):
+        """Initialize the model explainer system."""
         try:
-            logger.info("Setting up model explainer...")
-            # For now, we'll use model's built-in feature importance
-            # We can add SHAP later once we resolve the compatibility issue
-            self.explainer = "feature_importance"
-            logger.info("Feature importance explainer initialized")
-                
+            logger.info("Initializing prediction explainer...")
+            # Use model's built-in feature importance for explanations
+            # Future enhancement: integrate SHAP for local explanations
+            self.explainer_available = "feature_importance_analysis"
+            logger.info("Feature importance explainer ready")
+
         except Exception as e:
-            logger.error(f"Error setting up explainer: {str(e)}")
-            self.explainer = None
+            logger.error(f"Failed to initialize explainer: {str(e)}")
+            self.explainer_available = None
     
-    def explain_prediction(self, features: Dict[str, Any], top_k: int = 10) -> Dict[str, Any]:
-        """Generate explanation for a prediction using feature importance and local analysis"""
+    def explain_prediction(self, input_features: Dict[str, Any], top_k: int = 10) -> Dict[str, Any]:
+        """Generate comprehensive explanation for a threat prediction."""
         try:
-            if self.explainer is None:
-                return {"error": "Explainer not available"}
-            
-            # Convert input to DataFrame and prepare features
-            if isinstance(features, dict):
-                df = pd.DataFrame([features])
+            if not self.explainer_available:
+                return {"error": "Explainer system not available"}
+
+            # Prepare input features for analysis
+            if isinstance(input_features, dict):
+                features_dataframe = pd.DataFrame([input_features])
             else:
-                df = pd.DataFrame(features)
-            
-            # Prepare features (same as prediction pipeline)
-            X = df[self.model_service.feature_names].fillna(0)
-            X_scaled = self.model_service.scaler.transform(X)
-            
-            # Get prediction and probabilities
-            prediction = self.model_service.model.predict(X_scaled)[0]
-            probabilities = self.model_service.model.predict_proba(X_scaled)[0]
-            
-            # Get global feature importance from the model
-            global_importance = self.model_service.model.feature_importances_
-            
-            # Analyze feature values relative to training data statistics
-            feature_analysis = self._analyze_feature_values(X, global_importance)
-            
-            # Sort by combined importance score
-            feature_analysis.sort(key=lambda x: x['combined_score'], reverse=True)
-            
-            # Get top K features
-            top_features = feature_analysis[:top_k]
-            
-            # Generate explanations
-            explanations = []
-            for feat in top_features:
-                if feat['deviation_score'] > 0.5:
-                    if feat['feature_value'] > feat['typical_range']['high']:
-                        direction = "unusually high"
-                    elif feat['feature_value'] < feat['typical_range']['low']:
-                        direction = "unusually low"
-                    else:
-                        direction = "within normal range but important"
-                else:
-                    direction = "typical value"
-                
-                explanation = f"{feat['feature']} = {feat['feature_value']:.3f} ({direction}, importance: {feat['global_importance']:.3f})"
-                explanations.append(explanation)
-            
-            # Calculate confidence explanation
-            attack_prob = probabilities[1]
-            confidence_level = "HIGH" if max(probabilities) > 0.8 else "MEDIUM" if max(probabilities) > 0.6 else "LOW"
-            
-            return {
-                'explanation_method': 'Feature Importance + Local Analysis',
-                'prediction_analysis': {
-                    'prediction': int(prediction),
-                    'attack_probability': float(attack_prob),
-                    'confidence_level': confidence_level,
-                    'top_features': top_features,
-                    'explanations': explanations
+                features_dataframe = pd.DataFrame(input_features)
+
+            # Process features using same pipeline as prediction
+            processed_features = features_dataframe[self.model_service.feature_names].fillna(0)
+            scaled_features = self.model_service.feature_scaler.transform(processed_features)
+
+            # Get model prediction and confidence
+            threat_prediction = self.model_service.model.predict(scaled_features)[0]
+            class_probabilities = self.model_service.model.predict_proba(scaled_features)[0]
+
+            # Analyze global feature importance from model
+            global_feature_importance = self.model_service.model.feature_importances_
+
+            # Perform feature value analysis
+            detailed_feature_analysis = self._analyze_feature_significance(
+                processed_features, global_feature_importance
+            )
+
+            # Sort by combined significance score
+            detailed_feature_analysis.sort(key=lambda x: x['combined_significance'], reverse=True)
+
+            # Select top important features
+            most_important_features = detailed_feature_analysis[:top_k]
+
+            # Generate human-readable explanations
+            feature_explanations = []
+            for feature_info in most_important_features:
+                value_description = self._describe_feature_value(feature_info)
+                explanation_text = (f"{feature_info['feature_name']} = {feature_info['feature_value']:.3f} "
+                                  f"({value_description}, importance: {feature_info['global_importance']:.3f})")
+                feature_explanations.append(explanation_text)
+
+            # Determine confidence level
+            threat_probability = class_probabilities[1]
+            model_confidence = max(class_probabilities)
+            confidence_category = self._categorize_confidence(model_confidence)
+
+            # Build comprehensive explanation
+            explanation_result = {
+                'explanation_method': 'Feature Importance with Value Analysis',
+                'prediction_details': {
+                    'threat_prediction': int(threat_prediction),
+                    'threat_probability': float(threat_probability),
+                    'confidence_category': confidence_category,
+                    'most_important_features': most_important_features,
+                    'feature_explanations': feature_explanations
                 },
-                'interpretation': self._generate_interpretation(top_features, attack_prob, prediction),
-                'feature_count': len(feature_analysis),
-                'model_confidence': f"{max(probabilities):.3f}"
+                'human_interpretation': self._create_human_interpretation(
+                    most_important_features, threat_probability, threat_prediction
+                ),
+                'analyzed_features_count': len(detailed_feature_analysis),
+                'model_confidence_score': f"{model_confidence:.3f}"
             }
-            
+
+            return explanation_result
+
         except Exception as e:
-            logger.error(f"Error generating explanation: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
+            logger.error(f"Explanation generation failed: {str(e)}")
             return {
-                'error': f'Explanation generation failed: {str(e)}',
-                'fallback_explanation': 'Basic feature importance analysis available via /model/features endpoint'
+                'error': f'Failed to generate explanation: {str(e)}',
+                'fallback_option': 'Global feature importance available via /model/features endpoint'
             }
     
-    def _analyze_feature_values(self, X: pd.DataFrame, global_importance: np.ndarray) -> List[Dict]:
-        """Analyze feature values against typical ranges"""
-        feature_analysis = []
-        
-        # Load training data statistics (if available)
-        training_stats = self._get_training_statistics()
-        
-        for i, (feature_name, importance) in enumerate(zip(self.model_service.feature_names, global_importance)):
-            feature_value = float(X.iloc[0, i])
-            
-            # Get typical range for this feature
-            if training_stats and feature_name in training_stats:
-                stats = training_stats[feature_name]
-                typical_range = {
-                    'low': stats['q25'],
-                    'high': stats['q75'],
-                    'mean': stats['mean'],
-                    'std': stats['std']
+    def _analyze_feature_significance(self, features_dataframe: pd.DataFrame, global_importance: np.ndarray) -> List[Dict]:
+        """Analyze feature significance against typical ranges."""
+        feature_significance_analysis = []
+
+        # Load training data statistics for comparison
+        training_statistics = self._load_training_statistics()
+
+        for feature_index, (feature_name, importance) in enumerate(
+            zip(self.model_service.feature_names, global_importance)
+        ):
+            current_feature_value = float(features_dataframe.iloc[0, feature_index])
+
+            # Determine typical range for this feature
+            if training_statistics and feature_name in training_statistics:
+                feature_stats = training_statistics[feature_name]
+                typical_value_range = {
+                    'low_quartile': feature_stats['q25'],
+                    'high_quartile': feature_stats['q75'],
+                    'average': feature_stats['mean'],
+                    'standard_deviation': feature_stats['std']
                 }
-                
-                # Calculate deviation score (how unusual this value is)
-                if stats['std'] > 0:
-                    z_score = abs((feature_value - stats['mean']) / stats['std'])
-                    deviation_score = min(z_score / 3.0, 1.0)  # Normalize to 0-1
+
+                # Calculate how unusual this value is (z-score based)
+                if feature_stats['std'] > 0:
+                    z_score = abs((current_feature_value - feature_stats['mean']) / feature_stats['std'])
+                    unusualness_score = min(z_score / 3.0, 1.0)  # Normalize to 0-1 range
                 else:
-                    deviation_score = 0.0
+                    unusualness_score = 0.0
             else:
-                # Fallback ranges
-                typical_range = {'low': 0, 'high': 1, 'mean': 0.5, 'std': 0.3}
-                deviation_score = 0.0
-            
-            # Combined score: global importance * deviation
-            combined_score = float(importance) * (1 + deviation_score)
-            
-            feature_analysis.append({
-                'feature': feature_name,
-                'feature_value': feature_value,
+                # Default ranges when training stats unavailable
+                typical_value_range = {
+                    'low_quartile': 0, 'high_quartile': 1,
+                    'average': 0.5, 'standard_deviation': 0.3
+                }
+                unusualness_score = 0.0
+
+            # Combined significance: importance weighted by how unusual the value is
+            combined_significance = float(importance) * (1 + unusualness_score)
+
+            feature_significance_analysis.append({
+                'feature_name': feature_name,
+                'feature_value': current_feature_value,
                 'global_importance': float(importance),
-                'deviation_score': deviation_score,
-                'combined_score': combined_score,
-                'typical_range': typical_range,
-                'analysis': 'unusual' if deviation_score > 0.5 else 'typical'
+                'unusualness_score': unusualness_score,
+                'combined_significance': combined_significance,
+                'typical_range': typical_value_range,
+                'value_category': 'unusual' if unusualness_score > 0.5 else 'typical'
             })
-        
-        return feature_analysis
+
+        return feature_significance_analysis
     
-    def _get_training_statistics(self) -> Dict:
+    def _load_training_statistics(self) -> Dict:
         """Load or compute training data statistics"""
         try:
             # Try to load cached statistics
@@ -186,64 +193,100 @@ class ModelExplainer:
         
         return {}
     
-    def _generate_interpretation(self, top_features: List[Dict], attack_prob: float, prediction: int) -> str:
-        """Generate human-readable interpretation"""
+    def _describe_feature_value(self, feature_info: Dict) -> str:
+        """Generate human-readable description of feature value."""
+        if feature_info['unusualness_score'] > 0.5:
+            if feature_info['feature_value'] > feature_info['typical_range']['high_quartile']:
+                return "unusually high value"
+            elif feature_info['feature_value'] < feature_info['typical_range']['low_quartile']:
+                return "unusually low value"
+            else:
+                return "atypical but within normal range"
+        else:
+            return "typical value"
+
+    def _categorize_confidence(self, confidence_score: float) -> str:
+        """Categorize model confidence level."""
+        if confidence_score > 0.8:
+            return "HIGH"
+        elif confidence_score > 0.6:
+            return "MEDIUM"
+        else:
+            return "LOW"
+
+    def _create_human_interpretation(self, important_features: List[Dict], threat_probability: float, prediction: int) -> str:
+        """Generate human-readable interpretation of the prediction."""
         try:
-            pred_label = "ATTACK" if prediction == 1 else "NORMAL"
-            confidence = "high" if attack_prob > 0.8 or attack_prob < 0.2 else "moderate"
-            
-            interpretation = f"This IoT network traffic is classified as {pred_label} with {confidence} confidence ({attack_prob:.1%} attack probability). "
-            
-            # Find most important unusual features
-            unusual_features = [f for f in top_features[:3] if f['analysis'] == 'unusual']
-            important_features = [f for f in top_features[:3] if f['global_importance'] > 0.1]
-            
-            if unusual_features:
-                interpretation += f"Unusual patterns detected in: {', '.join([f['feature'] for f in unusual_features])}. "
-            
-            if important_features:
-                interpretation += f"Key decision factors: {', '.join([f['feature'] for f in important_features])}."
-            
+            threat_classification = "THREAT DETECTED" if prediction == 1 else "NORMAL TRAFFIC"
+            confidence_description = "high" if threat_probability > 0.8 or threat_probability < 0.2 else "moderate"
+
+            interpretation = (f"This IoT network traffic is classified as {threat_classification} "
+                            f"with {confidence_description} confidence ({threat_probability:.1%} threat probability). ")
+
+            # Identify unusual patterns in top features
+            unusual_patterns = [f for f in important_features[:3] if f['value_category'] == 'unusual']
+            highly_important_features = [f for f in important_features[:3] if f['global_importance'] > 0.1]
+
+            if unusual_patterns:
+                unusual_feature_names = [f['feature_name'] for f in unusual_patterns]
+                interpretation += f"Unusual patterns detected in: {', '.join(unusual_feature_names)}. "
+
+            if highly_important_features:
+                key_feature_names = [f['feature_name'] for f in highly_important_features]
+                interpretation += f"Key decision factors: {', '.join(key_feature_names)}."
+
             return interpretation
-            
+
         except Exception as e:
-            return f"IoT traffic classification: {'ATTACK' if prediction == 1 else 'NORMAL'} (confidence: {attack_prob:.1%})"
+            logger.warning(f"Failed to generate interpretation: {str(e)}")
+            return f"IoT traffic classified as: {'THREAT' if prediction == 1 else 'NORMAL'} (probability: {threat_probability:.1%})"
     
     def get_feature_summary(self) -> Dict[str, Any]:
-        """Get summary of feature importance from the model"""
+        """Get comprehensive summary of model feature importance."""
         try:
-            if hasattr(self.model_service.model, 'feature_importances_'):
-                importances = self.model_service.model.feature_importances_
-                
-                feature_summary = []
-                for feature, importance in zip(self.model_service.feature_names, importances):
-                    feature_summary.append({
-                        'feature': feature,
-                        'global_importance': float(importance)
-                    })
-                
-                # Sort by importance
-                feature_summary.sort(key=lambda x: x['global_importance'], reverse=True)
-                
-                return {
-                    'feature_importances': feature_summary,
-                    'top_5_features': feature_summary[:5],
-                    'description': 'Global feature importance from Random Forest model (without SHAP)',
-                    'explanation_method': 'Built-in Random Forest feature importance'
-                }
-            else:
-                return {'error': 'Model does not support feature importance'}
-                
+            if not hasattr(self.model_service.model, 'feature_importances_'):
+                return {'error': 'Model does not provide feature importance information'}
+
+            global_importance_scores = self.model_service.model.feature_importances_
+
+            # Build feature importance summary
+            feature_importance_list = []
+            for feature_name, importance_score in zip(self.model_service.feature_names, global_importance_scores):
+                feature_importance_list.append({
+                    'feature_name': feature_name,
+                    'importance_score': float(importance_score)
+                })
+
+            # Sort by importance (highest first)
+            feature_importance_list.sort(key=lambda x: x['importance_score'], reverse=True)
+
+            return {
+                'global_feature_importance': feature_importance_list,
+                'top_5_most_important': feature_importance_list[:5],
+                'analysis_description': 'Global feature importance from Random Forest model',
+                'explanation_method': 'Random Forest built-in feature importance',
+                'total_features_analyzed': len(feature_importance_list)
+            }
+
         except Exception as e:
-            logger.error(f"Error getting feature summary: {str(e)}")
+            logger.error(f"Failed to generate feature summary: {str(e)}")
             return {'error': str(e)}
     
+    @property
+    def explainer(self):
+        """Compatibility property for main app."""
+        return self.explainer_available
+
     def get_explainer_status(self) -> Dict[str, Any]:
-        """Get status of the explainer"""
+        """Get current status of the explanation system."""
         return {
-            'explainer_available': self.explainer is not None,
-            'explainer_type': 'Feature Importance + Local Analysis',
-            'shap_available': False,  # Will be True once we fix SHAP
-            'supported_explanations': ['feature_importance', 'local_analysis', 'deviation_detection'],
-            'note': 'SHAP explainability will be added in next update'
+            'explainer_operational': self.explainer_available is not None,
+            'explanation_type': 'Feature Importance with Value Analysis',
+            'advanced_explanations_available': False,  # Future: SHAP integration
+            'supported_analysis_types': [
+                'global_feature_importance',
+                'local_value_analysis',
+                'deviation_detection'
+            ],
+            'future_enhancements': 'SHAP-based local explanations planned'
         }
