@@ -1,22 +1,30 @@
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import classification_report, roc_auc_score, f1_score, precision_score, recall_score
-from sklearn.preprocessing import StandardScaler
-import mlflow
-import pickle
+import os
+import sys
 import json
+import pickle
 import logging
 from datetime import datetime
 from pathlib import Path
-import os
-import sys
 
-# Add the app directory to the path so we can import our modules
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from app.models.model_service import ModelService
+import mlflow
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.model_selection import cross_val_score, train_test_split
+from sklearn.preprocessing import StandardScaler
+
+# Ensure the repository root is on sys.path for direct execution
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+
+from app.runtime import (
+    EXPECTED_FEATURES,
+    FEATURE_FILENAME,
+    FEATURE_STATS_FILENAME,
+    MODEL_FILENAME,
+    SCALER_FILENAME,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -53,9 +61,11 @@ class SimpleMLflowTrainer:
         df = pd.read_csv(data_path)
         logger.info(f"Loaded dataset with shape: {df.shape}")
         
-        # Prepare features using ModelService logic
-        model_service = ModelService.__new__(ModelService)  # Create instance without __init__
-        X = model_service.prepare_features(df)
+        feature_columns = [feature for feature in EXPECTED_FEATURES if feature in df.columns]
+        if not feature_columns:
+            raise ValueError("Training data missing required IoT network features")
+
+        X = df[feature_columns].copy()
         y = (df['label'] > 0).astype(int)  # Binary classification
         
         logger.info(f"Features shape: {X.shape}")
@@ -127,34 +137,40 @@ class SimpleMLflowTrainer:
         logger.info(f"Saving production model: {model_name}")
         
         # Ensure directory exists
-        Path('models/production').mkdir(parents=True, exist_ok=True)
-        
-        # Save model
-        model_path = 'models/production/iot_model.pkl'
-        with open(model_path, 'wb') as f:
-            pickle.dump(model, f)
-        
-        # Save scaler
-        scaler_path = 'models/production/scaler.pkl'
-        with open(scaler_path, 'wb') as f:
-            pickle.dump(scaler, f)
-        
-        # Save feature names
-        with open('models/production/feature_names.txt', 'w') as f:
-            f.write('\n'.join(X_train.columns))
-        
-        # Save metadata
+        production_dir = Path('models/production')
+        production_dir.mkdir(parents=True, exist_ok=True)
+
+        with (production_dir / MODEL_FILENAME).open('wb') as handle:
+            pickle.dump(model, handle)
+
+        with (production_dir / SCALER_FILENAME).open('wb') as handle:
+            pickle.dump(scaler, handle)
+
+        with (production_dir / FEATURE_FILENAME).open('w', encoding='utf-8') as handle:
+            handle.write('\n'.join(X_train.columns))
+
+        feature_stats = {
+            column: {
+                'mean': float(X_train[column].mean()),
+                'std': float(X_train[column].std(ddof=0) or 0.0),
+                'q25': float(X_train[column].quantile(0.25)),
+                'q75': float(X_train[column].quantile(0.75)),
+            }
+            for column in X_train.columns
+        }
+        with (production_dir / FEATURE_STATS_FILENAME).open('w', encoding='utf-8') as handle:
+            json.dump(feature_stats, handle)
+
         metadata = {
             'model_name': model_name,
             'model_type': type(model).__name__,
             'trained_at': datetime.now().isoformat(),
             'feature_count': len(X_train.columns),
-            'training_samples': len(X_train)
+            'training_samples': len(X_train),
         }
-        
-        with open('models/production/metadata.json', 'w') as f:
-            json.dump(metadata, f, indent=2)
-        
+        with (production_dir / 'metadata.json').open('w', encoding='utf-8') as handle:
+            json.dump(metadata, handle, indent=2)
+
         logger.info("Production model saved successfully")
     
     def run_experiment(self):

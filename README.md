@@ -50,6 +50,7 @@ python app/main.py
 ### Example: Threat Prediction
 
 **Request:**
+
 ```bash
 curl -X POST http://localhost:5000/predict \
   -H "Content-Type: application/json" \
@@ -64,6 +65,7 @@ curl -X POST http://localhost:5000/predict \
 ```
 
 **Response:**
+
 ```json
 {
   "status": "success",
@@ -95,22 +97,19 @@ These basic metrics are automatically converted to the complete 42-feature set r
 
 ## Project Structure
 
-```
+```text
 .
-├── app/                      # Application code
-│   ├── main.py              # Flask API server
-│   ├── validators.py        # Input validation
-│   └── models/              # ML model components
-│       ├── model_service.py # Model loading and prediction
-│       └── explainer.py     # Prediction explanations
-├── models/                   # Trained model storage
-│   └── production/          # Production models
-├── scripts/                  # Utility scripts
-│   ├── generate_sample_data.py  # Generate synthetic data
-│   └── train_model.py           # Train new model
-├── tests/                    # Test suite
-├── prometheus/              # Monitoring configuration
-├── grafana/                 # Dashboard configurations
+├── app/
+│   ├── main.py              # Flask API server and routing
+│   └── runtime.py           # Model loading, inference, explanations
+├── models/
+│   └── production/          # Persisted model assets
+├── scripts/
+│   ├── generate_sample_data.py
+│   └── train_model.py
+├── tests/
+├── prometheus/
+├── grafana/                 # Provisioned dashboards only
 ├── Dockerfile               # Container definition
 ├── docker-compose.yml       # Multi-service orchestration
 └── requirements.txt         # Python dependencies
@@ -132,14 +131,14 @@ The model is automatically saved to `models/production/` and loaded on startup.
 
 ## Monitoring
 
-The API includes comprehensive monitoring:
+The API ships with ready-to-use monitoring integrations:
 
-- **Prometheus Metrics**: Request counts, response times, error rates
-- **Grafana Dashboards**: Visual monitoring and alerting
-- **Health Checks**: Automated container health monitoring
-- **Structured Logging**: Detailed application logs
+- **Prometheus Metrics**: Request counts, response times, and error rates exposed by `/metrics`
+- **Grafana Dashboards**: JSON dashboards and provisioning rules are included; Grafana community plugins should be installed via the official catalog at runtime
+- **Health Checks**: Container-friendly `/health` endpoint
+- **Structured Logging**: Timestamped application logs
 
-Access Grafana at `http://localhost:3000` (default credentials: admin/admin)
+Access Grafana at `http://localhost:3000` (default credentials: admin/admin).
 
 ## Development
 
@@ -205,6 +204,7 @@ Contributions are welcome! Please follow these guidelines:
 ## Support
 
 For issues and questions:
+
 - Create an issue on GitHub
 - Check existing documentation
 - Review the test suite for examples

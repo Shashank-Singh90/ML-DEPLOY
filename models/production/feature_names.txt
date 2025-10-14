@@ -28,11 +28,11 @@ ICMP
 IPv
 LLC
 Tot sum
+Tot size
 Min
 Max
 AVG
 Std
-Tot size
 IAT
 Number
 Magnitue
