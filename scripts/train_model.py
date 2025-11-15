@@ -31,8 +31,9 @@ logger = logging.getLogger(__name__)
 
 class SimpleMLflowTrainer:
     def __init__(self, experiment_name="iot-threat-detection"):
-        # Set MLflow tracking URI (local for now)
-        mlflow.set_tracking_uri("file:./mlruns")
+        # Set MLflow tracking URI from environment or use local file storage
+        tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "file:./mlruns")
+        mlflow.set_tracking_uri(tracking_uri)
         
         # Set or create experiment
         try:

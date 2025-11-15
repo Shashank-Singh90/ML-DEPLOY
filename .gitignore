@@ -3,10 +3,25 @@ __pycache__/
 .venv/
 .env
 .ipynb_checkpoints/
-# data / artifacts (adjust as needed)
-data/
-models/
+
+# Data files - keep sample files for Docker builds
+# Ignore large training data but keep test samples
+data/raw/synthetic_iot_data.csv
+# Keep smaller test files
+!data/raw/test_sample.csv
+
+# Model files - keep production models for Docker builds
+# Models directory is needed but keep production artifacts
+!models/production/
+!models/production/*.pkl
+!models/production/*.txt
+!models/production/*.json
+
+# Checkpoints and temporary files
 checkpoints/
-*.csv
-*.parquet
+*.tmp
 .DS_Store
+
+# MLflow
+mlruns/
+mlartifacts/

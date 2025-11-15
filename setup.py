@@ -7,7 +7,7 @@ setup(
     description="IoT network threat detection using machine learning",
     author="Development Team",
     packages=find_packages(),
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     install_requires=[
         "fastapi>=0.110.0",
         "scikit-learn>=1.3.0",
@@ -16,6 +16,9 @@ setup(
         "prometheus-client>=0.17.0",
         "uvicorn[standard]>=0.27.0",
         "gunicorn>=21.2.0",
+        "mlflow>=2.9.2",
+        "slowapi>=0.1.9",
+        "python-multipart>=0.0.6",
     ],
     extras_require={
         "dev": [
@@ -33,9 +36,9 @@ setup(
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
     ],
 )

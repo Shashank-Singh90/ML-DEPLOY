@@ -1,0 +1,46 @@
+version: 2
+updates:
+  # Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "your-team"
+    labels:
+      - "dependencies"
+      - "python"
+    # Group minor and patch updates
+    groups:
+      production-dependencies:
+        patterns:
+          - "fastapi*"
+          - "uvicorn*"
+          - "scikit-learn*"
+          - "pandas*"
+          - "numpy*"
+      development-dependencies:
+        patterns:
+          - "pytest*"
+          - "flake8*"
+
+  # Docker dependencies
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
