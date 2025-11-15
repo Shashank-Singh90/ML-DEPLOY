@@ -11,6 +11,7 @@ This module handles all ML model operations including:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -83,6 +84,22 @@ MODEL_FILENAME = "iot_model.pkl"  # Trained RandomForest model
 SCALER_FILENAME = "scaler.pkl"  # StandardScaler for feature normalization
 FEATURE_FILENAME = "feature_names.txt"  # List of feature names
 FEATURE_STATS_FILENAME = "feature_stats.json"  # Feature statistics for explainability
+CHECKSUMS_FILENAME = "model_checksums.json"  # SHA-256 checksums for integrity verification
+
+
+def compute_file_checksum(file_path: Path) -> str:
+    """Compute SHA-256 checksum of a file for integrity verification."""
+    sha256 = hashlib.sha256()
+    with file_path.open("rb") as f:
+        while chunk := f.read(8192):
+            sha256.update(chunk)
+    return sha256.hexdigest()
+
+
+def verify_file_checksum(file_path: Path, expected_checksum: str) -> bool:
+    """Verify that a file's checksum matches the expected value."""
+    actual_checksum = compute_file_checksum(file_path)
+    return actual_checksum == expected_checksum
 
 
 class ModelPipelineError(RuntimeError):
@@ -254,6 +271,34 @@ class ModelService:
         )
 
     def _load_from_disk(self) -> None:
+        # Load and verify checksums for security
+        checksum_file = self.model_dir / CHECKSUMS_FILENAME
+        if checksum_file.exists():
+            with checksum_file.open("r", encoding="utf-8") as f:
+                expected_checksums = json.load(f)
+
+            # Verify model file integrity
+            model_path = self.model_dir / MODEL_FILENAME
+            if not verify_file_checksum(model_path, expected_checksums.get("model", "")):
+                raise ModelPipelineError(
+                    f"Model file integrity check failed! Possible tampering detected in {model_path}"
+                )
+
+            # Verify scaler file integrity
+            scaler_path = self.model_dir / SCALER_FILENAME
+            if not verify_file_checksum(scaler_path, expected_checksums.get("scaler", "")):
+                raise ModelPipelineError(
+                    f"Scaler file integrity check failed! Possible tampering detected in {scaler_path}"
+                )
+
+            logger.info("Model integrity verified successfully")
+        else:
+            logger.warning(
+                "No checksum file found - loading model without integrity verification. "
+                "This is a security risk!"
+            )
+
+        # Load model and scaler (now verified)
         with (self.model_dir / MODEL_FILENAME).open("rb") as handle:
             self.model = pickle.load(handle)
         with (self.model_dir / SCALER_FILENAME).open("rb") as handle:
@@ -339,13 +384,29 @@ class ModelService:
 
     def _persist_to_disk(self, features: pd.DataFrame) -> None:
         self.model_dir.mkdir(parents=True, exist_ok=True)
-        with (self.model_dir / MODEL_FILENAME).open("wb") as handle:
+
+        # Save model and scaler
+        model_path = self.model_dir / MODEL_FILENAME
+        with model_path.open("wb") as handle:
             pickle.dump(self.model, handle)
-        with (self.model_dir / SCALER_FILENAME).open("wb") as handle:
+
+        scaler_path = self.model_dir / SCALER_FILENAME
+        with scaler_path.open("wb") as handle:
             pickle.dump(self.scaler, handle)
+
         with (self.model_dir / FEATURE_FILENAME).open("w", encoding="utf-8") as handle:
             handle.write("\n".join(self.feature_names))
-        logger.info("Persisted trained model assets to %s", self.model_dir)
+
+        # Compute and save checksums for integrity verification
+        checksums = {
+            "model": compute_file_checksum(model_path),
+            "scaler": compute_file_checksum(scaler_path),
+            "created_at": datetime.now().isoformat(),
+        }
+        with (self.model_dir / CHECKSUMS_FILENAME).open("w", encoding="utf-8") as handle:
+            json.dump(checksums, handle, indent=2)
+
+        logger.info("Persisted trained model assets with integrity checksums to %s", self.model_dir)
 
         # Cache simple feature statistics for explanations
         stats = {
