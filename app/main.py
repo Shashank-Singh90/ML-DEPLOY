@@ -336,7 +336,7 @@ def convert_simple_to_advanced_features(simple_input: Dict[str, float]) -> Dict[
         "Std": average_packet_size * 0.3,
 
         # Statistical features
-        "Magnitue": packet_rate,
+        "Magnitude": packet_rate,
         "Radius": 25.0,
         "Covariance": 0.1,
         "Variance": 0.2,
@@ -591,7 +591,7 @@ async def mlflow_info() -> JSONResponse:
             status_code=200,
             content={
                 "mlflow_tracking_uri": mlflow_uri,
-                "mlflow_ui_url": mlflow_uri.replace(":5001", ":5001"),
+                "mlflow_ui_url": mlflow_uri,
                 "experiment": experiment_info,
                 "status": "connected" if experiment else "disconnected",
             },
@@ -602,7 +602,7 @@ async def mlflow_info() -> JSONResponse:
             status_code=200,
             content={
                 "mlflow_tracking_uri": mlflow_uri,
-                "mlflow_ui_url": mlflow_uri.replace(":5001", ":5001"),
+                "mlflow_ui_url": mlflow_uri,
                 "status": "unavailable",
                 "error": str(exc),
             },

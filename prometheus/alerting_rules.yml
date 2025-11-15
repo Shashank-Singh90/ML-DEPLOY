@@ -17,8 +17,8 @@ groups:
 
       # High Threat Detection Rate
       - alert: HighThreatDetectionRate
-        expr: iot_attack_rate_last_hour > 0.5
-        for: 1m
+        expr: (sum(rate(iot_predictions_total{prediction_class="threat"}[1h])) / sum(rate(iot_predictions_total[1h]))) > 0.5
+        for: 5m
         labels:
           severity: critical
           service: iot-ml-api

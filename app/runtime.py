@@ -71,7 +71,7 @@ EXPECTED_FEATURES: List[str] = [
     "Std",
     "IAT",
     "Number",
-    "Magnitue",
+    "Magnitude",
     "Radius",
     "Covariance",
     "Variance",
@@ -180,14 +180,8 @@ class ModelService:
         prediction = int(self.model.predict(scaled)[0])
         important_features = self.top_features(limit=5, value_row=features.iloc[0])
 
-        # Log prediction to MLflow (async, non-blocking)
-        try:
-            mlflow.log_metrics({
-                "prediction_confidence": float(np.max(probabilities)),
-                "threat_probability": float(probabilities[1]),
-            }, synchronous=False)
-        except Exception as e:
-            logger.debug("MLflow prediction logging failed: %s", e)
+        # Note: MLflow metrics logging removed from predict() to avoid logging
+        # outside of active run context. Use Prometheus metrics for monitoring instead.
 
         return PredictionResult(
             prediction=prediction,
