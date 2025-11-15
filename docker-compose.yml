@@ -9,13 +9,38 @@ services:
       - PYTHONPATH=/app
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
+      - MLFLOW_TRACKING_URI=http://mlflow:5001
     restart: unless-stopped
     networks:
       - monitoring
     depends_on:
       - prometheus
+      - mlflow
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # MLflow Tracking Server
+  mlflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.mlflow
+    container_name: iot-mlflow
+    ports:
+      - "5001:5001"
+    volumes:
+      - mlflow-artifacts:/mlflow/artifacts
+      - mlflow-backend:/mlflow/backend
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=file:///mlflow/backend
+      - MLFLOW_ARTIFACT_ROOT=/mlflow/artifacts
+    restart: unless-stopped
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -62,6 +87,8 @@ services:
 volumes:
   prometheus-data:
   grafana-data:
+  mlflow-artifacts:
+  mlflow-backend:
 
 networks:
   monitoring:

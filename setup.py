@@ -9,12 +9,12 @@ setup(
     packages=find_packages(),
     python_requires=">=3.8",
     install_requires=[
-        "flask>=3.0.0",
+        "fastapi>=0.110.0",
         "scikit-learn>=1.3.0",
         "pandas>=2.1.0",
         "numpy>=1.26.0",
         "prometheus-client>=0.17.0",
-        "prometheus-flask-exporter>=0.22.0",
+        "uvicorn[standard]>=0.27.0",
         "gunicorn>=21.2.0",
     ],
     extras_require={
@@ -26,7 +26,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "iot-threat-api=app.main:app",
+            "iot-threat-api=app.main:run",
         ],
     },
     classifiers=[

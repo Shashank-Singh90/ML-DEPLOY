@@ -7,6 +7,7 @@ A production-ready machine learning API for detecting cybersecurity threats in I
 - **Real-time Threat Detection**: ML-based classification of IoT network traffic
 - **Simple API**: Easy-to-use REST endpoints with 6-field input
 - **Model Explainability**: Feature importance analysis for predictions
+- **MLflow Integration**: Experiment tracking, model versioning, and ML lifecycle management
 - **Production Monitoring**: Prometheus metrics and Grafana dashboards
 - **Docker Support**: Containerized deployment with health checks
 
@@ -18,9 +19,11 @@ A production-ready machine learning API for detecting cybersecurity threats in I
 # Build and start all services
 docker-compose up --build
 
-# API available at http://localhost:5000
-# Prometheus at http://localhost:9090
-# Grafana at http://localhost:3000
+# Services available at:
+# - API: http://localhost:5000
+# - MLflow UI: http://localhost:5001
+# - Prometheus: http://localhost:9090
+# - Grafana: http://localhost:3000 (admin/admin)
 ```
 
 ### Local Development
@@ -29,13 +32,17 @@ docker-compose up --build
 # Install dependencies
 pip install -r requirements.txt
 
+# Generate training data
+python scripts/generate_sample_data.py
+
+# Train model (optional - model included)
+python scripts/train_model.py
+
 # Run the application
-python app/main.py
+uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
 ```
 
 ## API Endpoints
-
-### Core Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -46,11 +53,11 @@ python app/main.py
 | GET | `/model/info` | Model information and features |
 | GET | `/stats` | Usage statistics |
 | GET | `/metrics` | Prometheus metrics |
+| GET | `/mlflow/info` | MLflow tracking information |
 
 ### Example: Threat Prediction
 
 **Request:**
-
 ```bash
 curl -X POST http://localhost:5000/predict \
   -H "Content-Type: application/json" \
@@ -65,7 +72,6 @@ curl -X POST http://localhost:5000/predict \
 ```
 
 **Response:**
-
 ```json
 {
   "status": "success",
@@ -80,7 +86,7 @@ curl -X POST http://localhost:5000/predict \
 
 ## Input Format
 
-### Simple Prediction (6 fields)
+The API accepts 6 simple network metrics that are automatically expanded to 42 model features:
 
 ```json
 {
@@ -93,52 +99,109 @@ curl -X POST http://localhost:5000/predict \
 }
 ```
 
-These basic metrics are automatically converted to the complete 42-feature set required by the ML model.
-
 ## Project Structure
 
-```text
+```
 .
 ├── app/
-│   ├── main.py              # Flask API server and routing
-│   └── runtime.py           # Model loading, inference, explanations
-├── models/
-│   └── production/          # Persisted model assets
+│   ├── main.py              # FastAPI server and routing
+│   └── runtime.py           # Model service, inference, explanations
+├── models/production/       # Trained model assets
 ├── scripts/
-│   ├── generate_sample_data.py
-│   └── train_model.py
+│   ├── generate_sample_data.py  # Synthetic data generator
+│   └── train_model.py           # Model training with MLflow
 ├── tests/
-├── prometheus/
-├── grafana/                 # Provisioned dashboards only
-├── Dockerfile               # Container definition
-├── docker-compose.yml       # Multi-service orchestration
-└── requirements.txt         # Python dependencies
+│   └── test_app.py         # API tests
+├── prometheus/             # Prometheus configuration
+├── grafana/                # Grafana dashboards
+├── Dockerfile              # API container definition
+├── Dockerfile.mlflow       # MLflow container definition
+├── docker-compose.yml      # Multi-service orchestration
+└── requirements.txt        # Python dependencies
 ```
 
-## Model Training
+## MLflow Integration
 
-To train a new model with your own data:
+MLflow provides experiment tracking and model versioning:
+
+### Accessing MLflow UI
+Visit http://localhost:5001 to view:
+- Training runs and metrics
+- Model registry
+- Feature importance
+- Experiment comparisons
+
+### What's Tracked
+
+**Training Metrics:**
+- accuracy, precision, recall, f1_score
+- Model parameters (n_estimators, max_depth, etc.)
+- Feature importance
+
+**Prediction Metrics:**
+- prediction_confidence
+- threat_probability
+
+### Check MLflow Status
+```bash
+curl http://localhost:5000/mlflow/info
+```
+
+## Docker Deployment
+
+### Service Architecture
+
+```
+┌─────────────────────────────────────┐
+│       Docker Network: monitoring     │
+├─────────────────────────────────────┤
+│  ┌──────────┐  ┌─────────────┐     │
+│  │ IoT API  │  │   MLflow    │     │
+│  │  :5000   │  │   :5001     │     │
+│  └────┬─────┘  └──────┬──────┘     │
+│       │               │             │
+│  ┌────▼──────┐  ┌────▼──────┐     │
+│  │Prometheus │  │  Grafana  │     │
+│  │  :9090    │  │   :3000   │     │
+│  └───────────┘  └───────────┘     │
+└─────────────────────────────────────┘
+```
+
+### Common Docker Commands
 
 ```bash
-# Generate synthetic training data
-python scripts/generate_sample_data.py
+# Start services
+docker-compose up -d
 
-# Train the model
-python scripts/train_model.py
+# View logs
+docker-compose logs -f api
+
+# Stop services
+docker-compose down
+
+# Rebuild containers
+docker-compose up -d --build
+
+# Check health
+docker-compose ps
+curl http://localhost:5000/health
 ```
 
-The model is automatically saved to `models/production/` and loaded on startup.
+### Volume Management
 
-## Monitoring
+```bash
+# List volumes
+docker volume ls | grep mldeployiotcybersecurity
 
-The API ships with ready-to-use monitoring integrations:
+# Backup MLflow data
+docker run --rm \
+  -v mldeployiotcybersecurity_mlflow-artifacts:/source \
+  -v $(pwd)/backups:/backup \
+  alpine tar czf /backup/mlflow-artifacts.tar.gz -C /source .
 
-- **Prometheus Metrics**: Request counts, response times, and error rates exposed by `/metrics`
-- **Grafana Dashboards**: JSON dashboards and provisioning rules are included; Grafana community plugins should be installed via the official catalog at runtime
-- **Health Checks**: Container-friendly `/health` endpoint
-- **Structured Logging**: Timestamped application logs
-
-Access Grafana at `http://localhost:3000` (default credentials: admin/admin).
+# Remove all volumes (WARNING: Data loss!)
+docker-compose down -v
+```
 
 ## Development
 
@@ -162,6 +225,35 @@ black app/
 flake8 app/
 ```
 
+## Monitoring
+
+### Prometheus Metrics
+- Request counts by prediction class and risk level
+- Response time histograms
+- Error counters
+- Average threat scores
+
+Access at: http://localhost:9090
+
+### Grafana Dashboards
+Pre-configured dashboards for:
+- API performance metrics
+- Threat detection rates
+- System health monitoring
+
+Access at: http://localhost:3000 (admin/admin)
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MLFLOW_TRACKING_URI` | MLflow tracking server URL | `http://mlflow:5001` |
+| `PYTHONPATH` | Python path | `/app` |
+| `PYTHONDONTWRITEBYTECODE` | Disable .pyc files | `1` |
+| `PYTHONUNBUFFERED` | Unbuffered output | `1` |
+
+See `.env.example` for complete configuration options.
+
 ## Security Features
 
 - Non-root container user
@@ -169,19 +261,39 @@ flake8 app/
 - No sensitive data logging
 - Secure model loading
 - Health check monitoring
+- Network isolation via Docker
 
-## Environment Variables
+## Troubleshooting
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PYTHONPATH` | Python path | `/app` |
-| `PYTHONDONTWRITEBYTECODE` | Disable .pyc files | `1` |
-| `PYTHONUNBUFFERED` | Unbuffered output | `1` |
+### Container Won't Start
+```bash
+# Check logs
+docker-compose logs api
+
+# Restart service
+docker-compose restart api
+```
+
+### MLflow Connection Issues
+```bash
+# Verify MLflow is running
+docker-compose ps mlflow
+
+# Test connection from API
+docker-compose exec api curl http://mlflow:5001/health
+```
+
+### Port Conflicts
+```bash
+# Check port usage (Windows)
+netstat -ano | findstr :5000
+
+# Change ports in docker-compose.yml if needed
+```
 
 ## Production Deployment
 
 The application is production-ready with:
-
 - Automatic container restarts
 - Health check endpoints
 - Prometheus metrics export
@@ -190,12 +302,11 @@ The application is production-ready with:
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License
 
 ## Contributing
 
-Contributions are welcome! Please follow these guidelines:
-
+Contributions are welcome! Please:
 1. Fork the repository
 2. Create a feature branch
 3. Write tests for new functionality
@@ -204,7 +315,6 @@ Contributions are welcome! Please follow these guidelines:
 ## Support
 
 For issues and questions:
-
 - Create an issue on GitHub
 - Check existing documentation
 - Review the test suite for examples

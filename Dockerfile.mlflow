@@ -1,0 +1,42 @@
+# MLflow Tracking Server Dockerfile
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /mlflow
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install MLflow and dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+    mlflow==2.9.2 \
+    psycopg2-binary \
+    boto3 \
+    pyarrow
+
+# Create directories for artifacts and backend store
+RUN mkdir -p /mlflow/artifacts /mlflow/backend
+
+# Create non-root user for security
+RUN groupadd -r mlflowuser && useradd -r -g mlflowuser mlflowuser && \
+    chown -R mlflowuser:mlflowuser /mlflow
+USER mlflowuser
+
+# Expose MLflow UI port
+EXPOSE 5001
+
+# Environment variables
+ENV MLFLOW_BACKEND_STORE_URI=file:///mlflow/backend
+ENV MLFLOW_ARTIFACT_ROOT=/mlflow/artifacts
+
+# Run MLflow server
+CMD ["mlflow", "server", \
+     "--host", "0.0.0.0", \
+     "--port", "5001", \
+     "--backend-store-uri", "file:///mlflow/backend", \
+     "--default-artifact-root", "/mlflow/artifacts"]
