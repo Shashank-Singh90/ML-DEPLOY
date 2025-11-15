@@ -10,6 +10,9 @@ services:
       - PYTHONDONTWRITEBYTECODE=1
       - PYTHONUNBUFFERED=1
       - MLFLOW_TRACKING_URI=http://mlflow:5001
+    volumes:
+      - ./data:/app/data:ro  # Mount data as read-only
+      - ./models:/app/models  # Mount models directory
     restart: unless-stopped
     networks:
       - monitoring
@@ -21,6 +24,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
   # MLflow Tracking Server
   mlflow:
@@ -60,11 +71,19 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
+      - '--storage.tsdb.retention.time=720h'  # 30 days retention
       - '--web.enable-lifecycle'
     restart: unless-stopped
     networks:
       - monitoring
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
   # Grafana dashboards
   grafana:
