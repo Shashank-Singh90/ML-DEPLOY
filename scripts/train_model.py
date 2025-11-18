@@ -31,10 +31,8 @@ logger = logging.getLogger(__name__)
 
 class SimpleMLflowTrainer:
     def __init__(self, experiment_name="iot-threat-detection"):
-        # Using local MLflow for now, could switch to remote later
         mlflow.set_tracking_uri("file:./mlruns")
 
-        # Setup experiment
         try:
             experiment = mlflow.get_experiment_by_name(experiment_name)
             if experiment is None:
@@ -43,63 +41,53 @@ class SimpleMLflowTrainer:
             else:
                 experiment_id = experiment.experiment_id
                 logger.info(f"Using existing experiment: {experiment_name}")
-            
+
             mlflow.set_experiment(experiment_name)
-            
+
         except Exception as e:
             logger.error(f"Error setting up MLflow experiment: {str(e)}")
             raise
-    
+
     def load_and_prepare_data(self):
-        """Load and prep the training data"""
         logger.info("Loading IoT dataset...")
 
         data_path = 'data/raw/synthetic_iot_data.csv'
         if not os.path.exists(data_path):
             raise FileNotFoundError(f"Dataset not found at {data_path}")
-        
+
         df = pd.read_csv(data_path)
         logger.info(f"Loaded dataset with shape: {df.shape}")
-        
+
         feature_columns = [feature for feature in EXPECTED_FEATURES if feature in df.columns]
         if not feature_columns:
             raise ValueError("Training data missing required IoT network features")
 
         X = df[feature_columns].copy()
-        y = (df['label'] > 0).astype(int)  # convert to binary
+        y = (df['label'] > 0).astype(int)
 
         logger.info(f"Features shape: {X.shape}")
-        logger.info(f"Attack rate: {y.mean():.2%}")  # useful to know how balanced the data is
+        logger.info(f"Attack rate: {y.mean():.2%}")
 
         return X, y, df
     
     def train_model_with_tracking(self, model, model_name, X_train, y_train, X_test, y_test, params=None):
-        """Train a model and log everything to MLflow"""
-
         with mlflow.start_run(run_name=f"{model_name}_{datetime.now().strftime('%H%M%S')}"):
-            
-            # Log parameters
             if params:
                 mlflow.log_params(params)
             mlflow.log_param("model_type", model_name)
             mlflow.log_param("training_samples", len(X_train))
             mlflow.log_param("test_samples", len(X_test))
-            
-            # Train model
+
             model.fit(X_train, y_train)
-            
-            # Make predictions
+
             y_pred = model.predict(X_test)
             y_pred_proba = model.predict_proba(X_test)[:, 1]
-            
-            # Calculate metrics
+
             f1 = f1_score(y_test, y_pred)
             precision = precision_score(y_test, y_pred)
             recall = recall_score(y_test, y_pred)
             auc = roc_auc_score(y_test, y_pred_proba)
-            
-            # Run cross-validation if we have time
-            # TODO: maybe increase CV folds to 5 once training is faster
+
             try:
                 cv_scores = cross_val_score(model, X_train, y_train, cv=3, scoring='f1')
                 cv_mean = cv_scores.mean()
@@ -108,40 +96,34 @@ class SimpleMLflowTrainer:
                 mlflow.log_metric("cv_f1_std", cv_std)
             except Exception as e:
                 logger.warning(f"Cross-validation failed: {str(e)}")
-                cv_mean = f1  # just use test F1 as fallback
-            
-            # Log metrics
+                cv_mean = f1
+
             mlflow.log_metric("f1_score", f1)
             mlflow.log_metric("precision", precision)
             mlflow.log_metric("recall", recall)
             mlflow.log_metric("auc_roc", auc)
-            
-            # Log feature importance for tree-based models
+
             if hasattr(model, 'feature_importances_'):
                 feature_importance = pd.DataFrame({
                     'feature': X_train.columns,
                     'importance': model.feature_importances_
                 }).sort_values('importance', ascending=False)
 
-                # Log top 10 as a param (easier to view in UI)
                 top_features = feature_importance.head(10)
                 top_features_text = ", ".join([f"{row['feature']}({row['importance']:.3f})"
                                              for _, row in top_features.iterrows()])
                 mlflow.log_param("top_10_features", top_features_text)
-            
+
             logger.info(f"{model_name} - F1: {f1:.4f}, AUC: {auc:.4f}, CV: {cv_mean:.4f}")
-            
+
             return model, f1
     
     def save_production_model(self, model, model_name, X_train, scaler):
-        """Save the best model for production use"""
         logger.info(f"Saving production model: {model_name}")
 
         production_dir = Path('models/production')
         production_dir.mkdir(parents=True, exist_ok=True)
 
-        # Note: using pickle here, but runtime.py uses joblib for loading
-        # Both work fine, joblib is just a bit safer
         with (production_dir / MODEL_FILENAME).open('wb') as handle:
             pickle.dump(model, handle)
 
@@ -177,32 +159,25 @@ class SimpleMLflowTrainer:
         logger.info("Production model saved successfully")
     
     def run_experiment(self):
-        """Run the full training experiment"""
-        logger.info("🚀 Starting IoT Threat Detection Training")
+        logger.info("Starting IoT Threat Detection Training")
 
-        # Load data
         X, y, df = self.load_and_prepare_data()
 
-        # 80/20 train/test split
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=y
         )
-        
-        # Normalize features - important for logistic regression
+
         scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
 
-        # Keep as DataFrames so we can track feature names
         X_train_scaled = pd.DataFrame(X_train_scaled, columns=X_train.columns)
         X_test_scaled = pd.DataFrame(X_test_scaled, columns=X_test.columns)
-        
+
         logger.info(f"Training set: {X_train_scaled.shape}, Test set: {X_test_scaled.shape}")
-        
-        # Try a few different models and see what works best
+
         models = {}
 
-        # Start with a simple baseline
         logger.info("Training Logistic Regression...")
         lr_model = LogisticRegression(max_iter=1000, class_weight='balanced', random_state=42)
         lr_params = {"max_iter": 1000, "class_weight": "balanced"}
@@ -211,7 +186,6 @@ class SimpleMLflowTrainer:
         )
         models['LogisticRegression'] = (lr_model, lr_f1)
 
-        # Now try RF with moderate params
         logger.info("Training Random Forest...")
         rf_model = RandomForestClassifier(n_estimators=100, max_depth=10, class_weight='balanced', random_state=42, n_jobs=-1)
         rf_params = {"n_estimators": 100, "max_depth": 10, "class_weight": "balanced"}
@@ -220,7 +194,6 @@ class SimpleMLflowTrainer:
         )
         models['RandomForest'] = (rf_model, rf_f1)
 
-        # Try a beefier RF config
         logger.info("Training Optimized Random Forest...")
         rf2_model = RandomForestClassifier(n_estimators=200, max_depth=15, class_weight='balanced', random_state=42, n_jobs=-1)
         rf2_params = {"n_estimators": 200, "max_depth": 15, "class_weight": "balanced"}
@@ -229,17 +202,14 @@ class SimpleMLflowTrainer:
         )
         models['RandomForest_Optimized'] = (rf2_model, rf2_f1)
 
-        # Pick the winner based on F1 score
         best_model_name = max(models.items(), key=lambda x: x[1][1])[0]
         best_model = models[best_model_name][0]
         best_score = models[best_model_name][1]
 
-        logger.info(f"🏆 Best model: {best_model_name} with F1 score: {best_score:.4f}")
+        logger.info(f"Best model: {best_model_name} with F1 score: {best_score:.4f}")
 
-        # Save it for deployment
         self.save_production_model(best_model, best_model_name, X_train, scaler)
-        
-        # Create a summary run for easy comparison
+
         with mlflow.start_run(run_name="Experiment_Summary"):
             mlflow.log_param("best_model", best_model_name)
             mlflow.log_metric("best_f1_score", best_score)
@@ -248,24 +218,22 @@ class SimpleMLflowTrainer:
             mlflow.log_param("feature_count", len(X.columns))
             mlflow.log_param("attack_rate", y.mean())
 
-            # Log all scores so we can compare in the UI
             for name, (_, score) in models.items():
                 mlflow.log_metric(f"{name}_f1_score", score)
-        
+
         return best_model, best_model_name, best_score
 
 def main():
-    """Main function to run the experiment"""
     try:
         trainer = SimpleMLflowTrainer()
         best_model, model_name, score = trainer.run_experiment()
-        
-        print(f"\n🎉 Experiment Complete!")
-        print(f"🏆 Best Model: {model_name}")
-        print(f"📊 Best F1 Score: {score:.4f}")
-        print(f"💾 Model saved to: models/production/")
-        print(f"📈 View results: Run 'mlflow ui' in terminal or use start_mlflow.py")
-        
+
+        print(f"\nExperiment Complete!")
+        print(f"Best Model: {model_name}")
+        print(f"F1 Score: {score:.4f}")
+        print(f"Model saved to: models/production/")
+        print(f"View results: mlflow ui")
+
     except Exception as e:
         logger.error(f"Experiment failed: {str(e)}")
         raise
