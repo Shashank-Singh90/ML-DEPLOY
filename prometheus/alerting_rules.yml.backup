@@ -1,0 +1,131 @@
+# 🚨 Prometheus Alerting Rules for IoT Cybersecurity ML System
+
+groups:
+  - name: iot_ml_alerts
+    rules:
+      # High Error Rate Alert
+      - alert: HighErrorRate
+        expr: rate(iot_prediction_errors_total[5m]) / rate(iot_predictions_total[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: iot-ml-api
+        annotations:
+          summary: "High error rate detected in IoT ML API"
+          description: "Error rate is {{ $value | humanizePercentage }} which is above the 5% threshold"
+          runbook_url: "https://github.com/YOUR_USERNAME/iot-cybersecurity-ml/wiki/High-Error-Rate"
+
+      # High Threat Detection Rate
+      - alert: HighThreatDetectionRate
+        expr: iot_attack_rate_last_hour > 0.5
+        for: 1m
+        labels:
+          severity: critical
+          service: iot-ml-api
+        annotations:
+          summary: "High attack rate detected in IoT network"
+          description: "Attack rate is {{ $value | humanizePercentage }} in the last hour"
+          runbook_url: "https://github.com/YOUR_USERNAME/iot-cybersecurity-ml/wiki/High-Attack-Rate"
+
+      # API Response Time Alert
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(iot_prediction_duration_seconds_bucket[5m])) > 1.0
+        for: 3m
+        labels:
+          severity: warning
+          service: iot-ml-api
+        annotations:
+          summary: "High response time in IoT ML API"
+          description: "95th percentile response time is {{ $value }}s which is above 1s threshold"
+
+      # Service Down Alert
+      - alert: IoTMLAPIDown
+        expr: up{job="iot-security-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: iot-ml-api
+        annotations:
+          summary: "IoT ML API is down"
+          description: "The IoT ML API service has been down for more than 1 minute"
+          runbook_url: "https://github.com/YOUR_USERNAME/iot-cybersecurity-ml/wiki/Service-Down"
+
+      # Low Prediction Confidence
+      - alert: LowModelConfidence
+        expr: avg(iot_model_confidence) < 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: iot-ml-api
+        annotations:
+          summary: "Low model confidence detected"
+          description: "Average model confidence is {{ $value | humanizePercentage }} over the last 5 minutes"
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.85
+        for: 2m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is {{ $value | humanizePercentage }}"
+
+      # High CPU Usage
+      - alert: HighCPUUsage
+        expr: 100 - (avg(irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 3m
+        labels:
+          severity: warning
+          service: system
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is {{ $value }}%"
+
+      # Disk Space Alert
+      - alert: LowDiskSpace
+        expr: (1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)) > 0.9
+        for: 1m
+        labels:
+          severity: critical
+          service: system
+        annotations:
+          summary: "Low disk space"
+          description: "Disk usage is {{ $value | humanizePercentage }} on {{ $labels.mountpoint }}"
+
+  - name: iot_ml_business_alerts
+    rules:
+      # Unusual Traffic Patterns
+      - alert: UnusualTrafficPattern
+        expr: rate(iot_predictions_total[1h]) > (rate(iot_predictions_total[24h]) * 3)
+        for: 10m
+        labels:
+          severity: info
+          service: iot-ml-api
+        annotations:
+          summary: "Unusual traffic pattern detected"
+          description: "Current traffic is 3x higher than the 24-hour average"
+
+      # Model Performance Degradation
+      - alert: ModelPerformanceDegradation
+        expr: increase(iot_prediction_errors_total[1h]) > 50
+        for: 5m
+        labels:
+          severity: warning
+          service: iot-ml-api
+        annotations:
+          summary: "Model performance may be degrading"
+          description: "{{ $value }} prediction errors in the last hour"
+
+      # No Predictions Alert
+      - alert: NoPredictions
+        expr: rate(iot_predictions_total[10m]) == 0
+        for: 5m
+        labels:
+          severity: warning
+          service: iot-ml-api
+        annotations:
+          summary: "No predictions being made"
+          description: "No predictions have been made in the last 10 minutes"
+          

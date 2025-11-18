@@ -3,10 +3,12 @@ __pycache__/
 .venv/
 .env
 .ipynb_checkpoints/
-# data / artifacts (adjust as needed)
-data/
-models/
+# FIXED: Allow tracked data and models but ignore generated files (Issue #19)
+# Note: data/ and models/ subdirectories are already tracked
 checkpoints/
-*.csv
 *.parquet
 .DS_Store
+*.pyc
+.pytest_cache/
+mlruns/
+*.log

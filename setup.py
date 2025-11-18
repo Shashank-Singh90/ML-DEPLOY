@@ -16,6 +16,10 @@ setup(
         "prometheus-client>=0.17.0",
         "uvicorn[standard]>=0.27.0",
         "gunicorn>=21.2.0",
+        "mlflow>=2.9.2",
+        "joblib>=1.3.0",
+        "slowapi>=0.1.9",
+        "python-multipart>=0.0.6",
     ],
     extras_require={
         "dev": [
