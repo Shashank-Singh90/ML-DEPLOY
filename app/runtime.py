@@ -77,7 +77,7 @@ EXPECTED_FEATURES: List[str] = [
     "Std",
     "IAT",
     "Number",
-    "Magnitue",
+    "Magnitude",  # was misspelled in original dataset
     "Radius",
     "Covariance",
     "Variance",
@@ -184,23 +184,20 @@ class ModelService:
         return dataframe[available].copy()
 
     def predict(self, feature_source: Dict[str, Any] | Iterable[Dict[str, Any]]) -> PredictionResult:
-        """Run inference and return a structured prediction result.
-
-        Fixed: Uses predict_proba once and derives prediction from argmax.
-        """
+        """Run inference and return a structured prediction result."""
         if not self.model_loaded or self.model is None or self.scaler is None:
             raise ModelPipelineError("Model not loaded; predictions are unavailable.")
 
         features = self.normalise_input(feature_source)
         scaled = self.scaler.transform(features)
 
-        # FIXED: Single prediction call - derive prediction from probabilities
+        # Get probabilities and derive the prediction
         probabilities = self.model.predict_proba(scaled)[0]
         prediction = int(np.argmax(probabilities))
 
         important_features = self.top_features(limit=5, value_row=features.iloc[0])
 
-        # Log prediction to MLflow with proper context
+        # Try to log prediction metrics to MLflow if available
         try:
             if self.mlflow_client and self.mlflow_run_id:
                 self.mlflow_client.log_metric(
@@ -229,10 +226,7 @@ class ModelService:
         )
 
     def normalise_input(self, feature_source: Dict[str, Any] | Iterable[Dict[str, Any]]) -> pd.DataFrame:
-        """Normalize input features to match model expectations.
-
-        FIXED: Made public (was _normalise_input)
-        """
+        """Normalize input features to match model expectations."""
         if isinstance(feature_source, dict):
             frame = pd.DataFrame([feature_source])
         else:
@@ -244,7 +238,10 @@ class ModelService:
         return frame.reindex(columns=self.feature_names, fill_value=0.0)
 
     def top_features(self, limit: int = 5, value_row: Optional[pd.Series] = None) -> List[Dict[str, Any]]:
-        """Return the top contributing features by global importance."""
+        """Return the top contributing features by importance.
+
+        TODO: Consider adding SHAP values for better per-prediction explanations
+        """
         if not self.model_loaded or not hasattr(self.model, "feature_importances_"):
             return []
 
@@ -312,13 +309,16 @@ class ModelService:
         )
 
     def _is_lfs_pointer(self) -> bool:
-        """Check if model files are Git LFS pointers instead of actual models."""
+        """Check if model files are Git LFS pointers instead of actual models.
+
+        This happens when someone clones the repo but doesn't have LFS set up.
+        """
         model_path = self.model_dir / MODEL_FILENAME
         if not model_path.exists():
             return False
 
         try:
-            # LFS pointer files are small text files starting with "version https://git-lfs"
+            # LFS pointers are just small text files
             with model_path.open("rb") as f:
                 first_bytes = f.read(100)
                 if b"version https://git-lfs" in first_bytes:
@@ -328,10 +328,7 @@ class ModelService:
         return False
 
     def _load_from_disk(self) -> None:
-        """Load model from disk using secure joblib deserialization.
-
-        FIXED: Uses joblib instead of pickle for better security.
-        """
+        """Load model from disk using joblib (safer than pickle)."""
         try:
             self.model = joblib.load(self.model_dir / MODEL_FILENAME)
             self.scaler = joblib.load(self.model_dir / SCALER_FILENAME)
@@ -355,14 +352,14 @@ class ModelService:
         x_train_scaled = self.scaler.fit_transform(x_train)
         x_test_scaled = self.scaler.transform(x_test)
 
-        # Start MLflow run
+        # Track this training run in MLflow
         try:
             with mlflow.start_run(run_name="RandomForest_Training") as run:
                 self.mlflow_run_id = run.info.run_id
 
-                # Log parameters
+                # Log hyperparameters
                 params = {
-                    "n_estimators": 150,
+                    "n_estimators": 150,  # TODO: tune this
                     "max_depth": 12,
                     "class_weight": "balanced",
                     "random_state": 42,
@@ -373,10 +370,11 @@ class ModelService:
                 }
                 mlflow.log_params(params)
 
+                # Train the RF classifier
                 self.model = RandomForestClassifier(
                     n_estimators=150,
                     max_depth=12,
-                    class_weight="balanced",
+                    class_weight="balanced",  # helps with imbalanced data
                     n_jobs=-1,
                     random_state=42,
                 )
@@ -422,10 +420,7 @@ class ModelService:
         self._persist_to_disk(features)
 
     def _persist_to_disk(self, features: pd.DataFrame) -> None:
-        """Persist model to disk using secure joblib serialization.
-
-        FIXED: Uses joblib instead of pickle.
-        """
+        """Save the trained model and scaler to disk."""
         self.model_dir.mkdir(parents=True, exist_ok=True)
         joblib.dump(self.model, self.model_dir / MODEL_FILENAME)
         joblib.dump(self.scaler, self.model_dir / SCALER_FILENAME)
@@ -466,22 +461,20 @@ class ModelService:
         return self._generate_fallback_dataset()
 
     def _generate_fallback_dataset(self, rows: int = 2000) -> pd.DataFrame:
+        """Generate synthetic data if real training data isn't available."""
         rng = np.random.default_rng(seed=42)
         data = {feature: rng.normal(loc=100.0, scale=20.0, size=rows) for feature in EXPECTED_FEATURES}
-        # Ensure protocol flags stay within bounds
+        # Protocol flags should be binary
         for feature in ["HTTP", "HTTPS", "DNS", "Telnet", "SMTP", "SSH", "IRC", "TCP", "UDP", "DHCP", "ARP", "ICMP", "IPv", "LLC"]:
             data[feature] = rng.integers(low=0, high=2, size=rows)
         dataframe = pd.DataFrame(data)
-        threat_probability = rng.uniform(0.05, 0.3)
+        threat_probability = rng.uniform(0.05, 0.3)  # some reasonable attack rate
         dataframe["label"] = rng.binomial(1, threat_probability, size=rows)
         return dataframe
 
 
 class PredictionExplainer:
-    """Provide lightweight explanations based on model importances.
-
-    FIXED: Uses public normalise_input method and optimized predictions.
-    """
+    """Provide lightweight explanations based on model importances."""
 
     def __init__(self, model_service: ModelService) -> None:
         self.model_service = model_service
@@ -490,16 +483,17 @@ class PredictionExplainer:
         if not self.model_service.model_loaded:
             return {"status": "unavailable", "message": "Model not ready"}
 
-        # FIXED: Use public method
+        # Prepare features for the model
         features = self.model_service.normalise_input(feature_source)
         scaled = self.model_service.scaler.transform(features)
 
-        # FIXED: Single prediction call
+        # Get prediction and probabilities
         probabilities = self.model_service.model.predict_proba(scaled)[0]
         prediction = int(np.argmax(probabilities))
 
         top_features = self.model_service.top_features(limit=5, value_row=features.iloc[0])
 
+        # Build a human-readable explanation
         summary = self._build_summary(top_features, probabilities[1], prediction)
 
         return {
