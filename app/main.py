@@ -1,16 +1,7 @@
 """
-IoT Threat Detection API - Main Application Entry Point
+IoT Threat Detection API
 
-This module provides a FastAPI-based REST API for real-time cybersecurity
-threat detection in IoT network traffic using machine learning.
-
-Security improvements:
-- API key authentication
-- Rate limiting
-- Thread-safe operations
-- Request size limits
-- Information disclosure prevention
-- CORS configuration
+FastAPI-based REST API for real-time threat detection in IoT network traffic.
 """
 
 from __future__ import annotations
@@ -40,37 +31,25 @@ from slowapi.util import get_remote_address
 
 from app.runtime import ModelService, PredictionExplainer
 
-# Configure logging with timestamps and log levels
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# Security configuration
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 API_KEYS = set(os.getenv("API_KEYS", "").split(",")) if os.getenv("API_KEYS") else set()
-
-# Enable API key authentication if API_KEYS environment variable is set
 ENABLE_AUTH = len(API_KEYS) > 0 and "" not in API_KEYS
 
 if not ENABLE_AUTH:
-    logger.warning(
-        "⚠️  API running WITHOUT authentication! "
-        "Set API_KEYS environment variable for production use."
-    )
+    logger.warning("API running without authentication - set API_KEYS for production")
 
-# Rate limiting configuration
 limiter = Limiter(key_func=get_remote_address)
-
-# Thread-safe prediction storage
 predictions_lock = threading.Lock()
 recent_predictions: deque = deque(maxlen=100)
 
 
-# Security: API key validation
 async def get_api_key(api_key: Optional[str] = Security(API_KEY_HEADER)) -> str:
-    """Validate API key if authentication is enabled."""
     if not ENABLE_AUTH:
         return "no-auth-required"
 
@@ -85,30 +64,21 @@ async def get_api_key(api_key: Optional[str] = Security(API_KEY_HEADER)) -> str:
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    """
-    Application lifespan manager - handles startup and shutdown.
-
-    Initializes the ML model, explainer, and application state on startup.
-    """
     logger.info("Starting IoT Threat Detection API...")
-    logger.info("Loading ML model pipeline...")
 
-    # Initialize model service and explainer
     model_service = ModelService()
     explainer = PredictionExplainer(model_service)
 
-    # Store services in application state for dependency injection
     application.state.model_service = model_service
     application.state.explainer = explainer
     application.state.app_start_time = datetime.now()
 
-    logger.info("API ready to serve requests")
+    logger.info("API ready")
 
     try:
         yield
     finally:
-        # Cleanup on shutdown
-        logger.info("API shutting down...")
+        logger.info("Shutting down...")
         pass
 
 
@@ -119,7 +89,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure CORS - TODO: restrict origins in production
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
@@ -128,16 +97,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Setup rate limiting to prevent abuse
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Note: FastAPI has built-in request size limits, so we're good here
-app.add_middleware(
-    lambda app: app,  # placeholder middleware
-)
-
-# Prometheus metrics for monitoring
 prediction_counter = Counter(
     "iot_predictions_total",
     "Total number of threat predictions made",
@@ -162,9 +124,7 @@ error_counter = Counter(
 )
 
 
-# Dependency injection helpers
 def get_model_service(request: Request) -> ModelService:
-    """Retrieve the ML model service from application state."""
     model_service = getattr(request.app.state, "model_service", None)
     if model_service is None:
         logger.error("Model service not initialized")
@@ -173,7 +133,6 @@ def get_model_service(request: Request) -> ModelService:
 
 
 def get_explainer(request: Request) -> PredictionExplainer:
-    """Retrieve the prediction explainer from application state."""
     explainer = getattr(request.app.state, "explainer", None)
     if explainer is None:
         logger.error("Prediction explainer not initialized")
@@ -182,13 +141,10 @@ def get_explainer(request: Request) -> PredictionExplainer:
 
 
 def get_app_start_time(request: Request) -> datetime:
-    """Retrieve application start time for uptime calculation."""
     return getattr(request.app.state, "app_start_time", datetime.now())
 
 
 class ValidationErrorResponse(Exception):
-    """Custom exception for consistent validation error payloads."""
-
     def __init__(self, content: Dict[str, Any], status_code: int = 400) -> None:
         self.content = content
         self.status_code = status_code
@@ -199,19 +155,15 @@ async def handle_validation_error(_: Request, exc: ValidationErrorResponse) -> J
     return JSONResponse(status_code=exc.status_code, content=exc.content)
 
 
-# Input validation constants and helpers
-# The 6 required fields for threat prediction requests
 BASIC_REQUEST_FIELDS = (
-    "packet_count",  # Number of packets in the network flow
-    "byte_count",    # Total bytes transferred
-    "duration",      # Duration of the flow in seconds
-    "syn_flags",     # Number of SYN TCP flags
-    "fin_flags",     # Number of FIN TCP flags
-    "ack_flags",     # Number of ACK TCP flags
+    "packet_count",
+    "byte_count",
+    "duration",
+    "syn_flags",
+    "fin_flags",
+    "ack_flags",
 )
 
-# Optional protocol indicators that can be provided in requests
-# These default to 0.0 if not specified
 OPTIONAL_PROTOCOL_FIELDS = {
     "HTTP": 0.0, "HTTPS": 0.0, "DNS": 0.0, "Telnet": 0.0,
     "SMTP": 0.0, "SSH": 0.0, "IRC": 0.0, "TCP": 0.0,
@@ -219,22 +171,15 @@ OPTIONAL_PROTOCOL_FIELDS = {
     "IPv": 0.0, "LLC": 0.0,
 }
 
-# Statistical defaults for the feature expansion
-# These values were tuned based on the training dataset characteristics
 STATISTICAL_DEFAULTS = {
-    "Radius": 25.0,       # spatial analysis radius
-    "Covariance": 0.1,    # packet feature covariance
-    "Variance": 0.2,      # distribution variance
-    "Weight": 1.0,        # feature weight
+    "Radius": 25.0,
+    "Covariance": 0.1,
+    "Variance": 0.2,
+    "Weight": 1.0,
 }
 
 
 def _is_finite_number(value: Any) -> bool:
-    """
-    Check if a value is a finite numeric value.
-
-    Returns False for NaN, infinity, or non-numeric values.
-    """
     try:
         number = float(value)
     except (TypeError, ValueError):
@@ -243,16 +188,6 @@ def _is_finite_number(value: Any) -> bool:
 
 
 async def validate_prediction_input(request: Request) -> Dict[str, float]:
-    """
-    Validate and clean incoming prediction request data.
-
-    Ensures the request contains all 6 required numeric fields with valid values.
-    Returns a dictionary of validated float values.
-
-    Raises:
-        ValidationErrorResponse: If validation fails for any reason.
-    """
-    # Check content type
     content_type = request.headers.get("content-type", "").lower()
     if "application/json" not in content_type:
         raise ValidationErrorResponse(
@@ -263,9 +198,8 @@ async def validate_prediction_input(request: Request) -> Dict[str, float]:
             }
         )
 
-    # Check request size to prevent memory issues
     content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > 10 * 1024 * 1024:  # 10MB limit
+    if content_length and int(content_length) > 10 * 1024 * 1024:
         raise ValidationErrorResponse(
             {
                 "error": "Request too large",
@@ -275,7 +209,6 @@ async def validate_prediction_input(request: Request) -> Dict[str, float]:
             status_code=413
         )
 
-    # Parse JSON payload
     try:
         payload = await request.json()
     except json.JSONDecodeError:
@@ -286,7 +219,6 @@ async def validate_prediction_input(request: Request) -> Dict[str, float]:
             }
         ) from None
     except Exception:
-        # Don't expose internal errors to clients
         raise ValidationErrorResponse(
             {
                 "error": "Invalid request format",
@@ -294,7 +226,6 @@ async def validate_prediction_input(request: Request) -> Dict[str, float]:
             }
         ) from None
 
-    # Ensure payload is a dictionary
     if not isinstance(payload, dict):
         raise ValidationErrorResponse(
             {
@@ -303,7 +234,6 @@ async def validate_prediction_input(request: Request) -> Dict[str, float]:
             }
         )
 
-    # Check for missing fields
     missing_fields = [field for field in BASIC_REQUEST_FIELDS if field not in payload]
     if missing_fields:
         raise ValidationErrorResponse(
@@ -314,12 +244,10 @@ async def validate_prediction_input(request: Request) -> Dict[str, float]:
             }
         )
 
-    # Validate and clean each field
     validated_data: Dict[str, float] = {}
     for field in BASIC_REQUEST_FIELDS:
         raw_value = payload[field]
 
-        # Check if value is a finite number
         if not _is_finite_number(raw_value):
             raise ValidationErrorResponse(
                 {
@@ -330,7 +258,6 @@ async def validate_prediction_input(request: Request) -> Dict[str, float]:
 
         value = float(raw_value)
 
-        # Duration must be positive
         if field == "duration" and value <= 0:
             raise ValidationErrorResponse(
                 {
@@ -339,7 +266,6 @@ async def validate_prediction_input(request: Request) -> Dict[str, float]:
                 }
             )
 
-        # Other fields must be non-negative
         if field != "duration" and value < 0:
             raise ValidationErrorResponse(
                 {
@@ -350,32 +276,17 @@ async def validate_prediction_input(request: Request) -> Dict[str, float]:
 
         validated_data[field] = value
 
-    # Allow optional protocol indicators to be passed through
     for protocol_field, default_value in OPTIONAL_PROTOCOL_FIELDS.items():
         if protocol_field in payload:
             if _is_finite_number(payload[protocol_field]):
                 validated_data[protocol_field] = float(payload[protocol_field])
             else:
                 validated_data[protocol_field] = default_value
-        # Defaults are handled in feature conversion
 
     return validated_data
 
 
 def convert_simple_to_advanced_features(simple_input: Dict[str, float]) -> Dict[str, float]:
-    """
-    Convert simplified 6-field input to the 42 features the model expects.
-
-    This is basically a bridge between the simple API and the actual model,
-    which was trained on a much richer feature set.
-
-    Args:
-        simple_input: Dictionary with 6+ basic network metrics
-
-    Returns:
-        Dictionary with 42 expanded features for ML model
-    """
-    # Extract input values
     duration = simple_input["duration"]
     packet_count = simple_input["packet_count"]
     byte_count = simple_input["byte_count"]
@@ -383,65 +294,47 @@ def convert_simple_to_advanced_features(simple_input: Dict[str, float]) -> Dict[
     fin_flags = simple_input["fin_flags"]
     ack_flags = simple_input["ack_flags"]
 
-    # Calculate some basic derived features
     packet_rate = packet_count / duration if duration > 0 else 0.0
     average_packet_size = byte_count / packet_count if packet_count > 0 else 0.0
-    # TODO: might want to add more sophisticated feature engineering here
 
-    # Build the 42-feature dictionary for the ML model
     features = {
-        # Time-based features
         "flow_duration": duration,
         "Duration": duration,
-        "IAT": max(duration / max(packet_count, 1), 0.001),  # Inter-arrival time
-
-        # Rate features
+        "IAT": max(duration / max(packet_count, 1), 0.001),
         "Rate": packet_rate,
-        "Srate": packet_rate * 0.8,  # Scaled rate
-
-        # TCP flags (from input)
+        "Srate": packet_rate * 0.8,
         "fin_flag_number": fin_flags,
         "syn_flag_number": syn_flags,
         "ack_flag_number": ack_flags,
-
-        # TCP flags (defaults for missing data)
         "rst_flag_number": 0.0,
         "psh_flag_number": 2.0,
         "ece_flag_number": 0.0,
         "cwr_flag_number": 0.0,
-
-        # Packet counts
         "ack_count": ack_flags,
         "syn_count": syn_flags,
         "fin_count": fin_flags,
         "rst_count": 0.0,
         "Number": packet_count,
-
-        # Packet size statistics
         "Tot sum": byte_count,
         "Tot size": byte_count,
         "Min": average_packet_size * 0.5,
         "Max": average_packet_size * 1.5,
         "AVG": average_packet_size,
         "Std": average_packet_size * 0.3,
-
-        # Statistical features
-        "Magnitude": packet_rate,  # Note: model might have been trained with typo, verify this
+        "Magnitude": packet_rate,
         **STATISTICAL_DEFAULTS,
     }
 
-    # Handle protocol indicators - use provided values or make educated guesses
     for protocol_field, default_value in OPTIONAL_PROTOCOL_FIELDS.items():
         if protocol_field in simple_input:
             features[protocol_field] = simple_input[protocol_field]
         else:
-            # Make reasonable guesses based on what we know about the traffic
             if protocol_field == "TCP":
                 features[protocol_field] = 1.0 if syn_flags > 0 or ack_flags > 0 else 0.0
             elif protocol_field == "IPv":
-                features[protocol_field] = 1.0  # pretty much everything is IP these days
+                features[protocol_field] = 1.0
             elif protocol_field == "HTTP":
-                features[protocol_field] = 0.3  # moderate chance it's HTTP
+                features[protocol_field] = 0.3
             else:
                 features[protocol_field] = 0.0
 
@@ -449,38 +342,20 @@ def convert_simple_to_advanced_features(simple_input: Dict[str, float]) -> Dict[
 
 
 def calculate_risk_level(confidence_score: float, prediction: int) -> str:
-    """
-    Determine risk level based on prediction and confidence score.
-
-    TODO: These thresholds might need tuning based on production data
-
-    Args:
-        confidence_score: Model confidence (0.0 to 1.0)
-        prediction: Binary prediction (0=normal, 1=threat)
-
-    Returns:
-        Risk level: "low", "medium", "high", or "critical"
-    """
     if prediction == 0:
         return "low"
     if confidence_score < 0.7:
-        return "medium"  # borderline threats
+        return "medium"
     if confidence_score < 0.9:
         return "high"
     return "critical"
 
 
-# API Endpoints
 @app.get("/")
 async def home(
     model_service: ModelService = Depends(get_model_service),
     api_key: str = Depends(get_api_key)
 ) -> Dict[str, Any]:
-    """
-    Root endpoint - provides API information and available endpoints.
-
-    Returns service metadata, model status, and list of available endpoints.
-    """
     mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
 
     return {
@@ -508,13 +383,10 @@ async def health_check(
     request: Request,
     model_service: ModelService = Depends(get_model_service),
 ) -> JSONResponse:
-    """Report the current health of the API and model pipeline."""
-
     try:
         uptime_seconds = (datetime.now() - get_app_start_time(request)).total_seconds()
         status_value = "healthy" if model_service.model_loaded else "degraded"
 
-        # Need thread safety here since multiple requests could hit this
         with predictions_lock:
             total_predictions = len(recent_predictions)
 
@@ -529,7 +401,6 @@ async def health_check(
         status_code = 200 if model_service.model_loaded else 503
         return JSONResponse(status_code=status_code, content=payload)
     except Exception:
-        # Something went wrong with health check itself
         logger.exception("Health check failed")
         return JSONResponse(
             status_code=503,
@@ -544,8 +415,6 @@ async def predict(
     model_service: ModelService = Depends(get_model_service),
     api_key: str = Depends(get_api_key)
 ) -> JSONResponse:
-    """Run a threat prediction using the simplified six-field payload."""
-
     start_time = time.perf_counter()
     try:
         validated_payload = await validate_prediction_input(request)
@@ -558,7 +427,6 @@ async def predict(
             risk_level=risk_level,
         ).inc()
 
-        # Store prediction for stats (with thread safety)
         with predictions_lock:
             recent_predictions.append(
                 {
@@ -588,7 +456,6 @@ async def predict(
         raise
     except Exception as exc:
         error_counter.labels(error_type=type(exc).__name__).inc()
-        # Log internally but don't expose details to client
         logger.exception("Prediction processing failed")
         return JSONResponse(
             status_code=500,
@@ -609,8 +476,6 @@ async def explain_prediction(
     explainer: PredictionExplainer = Depends(get_explainer),
     api_key: str = Depends(get_api_key)
 ) -> JSONResponse:
-    """Return a concise explanation for the current prediction."""
-
     try:
         validated_payload = await validate_prediction_input(request)
         feature_payload = convert_simple_to_advanced_features(validated_payload)
@@ -641,8 +506,6 @@ async def model_info(
     model_service: ModelService = Depends(get_model_service),
     api_key: str = Depends(get_api_key)
 ) -> JSONResponse:
-    """Expose basic runtime and feature metadata for the model."""
-
     if not model_service.model_loaded:
         return JSONResponse(status_code=503, content={"status": "unavailable", "error": "Model not loaded"})
 
@@ -666,9 +529,6 @@ async def statistics(
     request: Request,
     api_key: str = Depends(get_api_key)
 ) -> JSONResponse:
-    """Return lightweight operational statistics."""
-
-    # Grab a snapshot of recent predictions
     with predictions_lock:
         recent_preds = list(recent_predictions)
 
@@ -696,19 +556,15 @@ async def statistics(
 
 @app.get("/metrics")
 async def metrics_endpoint() -> Response:
-    """Expose Prometheus metrics (public - no auth required for monitoring)."""
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/mlflow/info")
 @limiter.limit("30/minute")
 async def mlflow_info(api_key: str = Depends(get_api_key)) -> JSONResponse:
-    """Expose MLflow tracking information."""
-
     mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
 
     try:
-        # Get current experiment info
         experiment = mlflow.get_experiment_by_name("iot-threat-detection")
         experiment_info = {
             "experiment_id": experiment.experiment_id if experiment else None,
@@ -742,11 +598,10 @@ async def mlflow_info(api_key: str = Depends(get_api_key)) -> JSONResponse:
         )
 
 
-def run() -> None:  # pragma: no cover - console entry point helper
+def run() -> None:
     import uvicorn
-
     uvicorn.run("app.main:app", host="0.0.0.0", port=5000, log_level="info")
 
 
-if __name__ == "__main__":  # pragma: no cover - manual execution helper
+if __name__ == "__main__":
     run()

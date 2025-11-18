@@ -1,17 +1,7 @@
 """
 IoT Threat Detection - Runtime Model Service
 
-This module handles all ML model operations including:
-- Loading and training the Random Forest model
-- Feature preparation and scaling
-- Real-time threat predictions
-- Model explainability and feature importance
-- MLflow experiment tracking integration
-
-Security improvements:
-- Uses joblib instead of pickle for safer serialization
-- Detects and handles Git LFS pointer files
-- Thread-safe operations
+Handles ML model operations, training, predictions, and explainability.
 """
 
 from __future__ import annotations
@@ -37,8 +27,6 @@ from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
 
-# The 42 features expected by the model (order matters for scaling)
-# This list defines the exact feature names and order used during training
 EXPECTED_FEATURES: List[str] = [
     "flow_duration",
     "Duration",
@@ -77,37 +65,25 @@ EXPECTED_FEATURES: List[str] = [
     "Std",
     "IAT",
     "Number",
-    "Magnitude",  # was misspelled in original dataset
+    "Magnitude",
     "Radius",
     "Covariance",
     "Variance",
     "Weight",
 ]
 
-# Model file names for persistence
-MODEL_FILENAME = "iot_model.pkl"  # Trained RandomForest model
-SCALER_FILENAME = "scaler.pkl"  # StandardScaler for feature normalization
-FEATURE_FILENAME = "feature_names.txt"  # List of feature names
-FEATURE_STATS_FILENAME = "feature_stats.json"  # Feature statistics for explainability
+MODEL_FILENAME = "iot_model.pkl"
+SCALER_FILENAME = "scaler.pkl"
+FEATURE_FILENAME = "feature_names.txt"
+FEATURE_STATS_FILENAME = "feature_stats.json"
 
 
 class ModelPipelineError(RuntimeError):
-    """Exception raised when model operations fail (loading, training, prediction)."""
+    pass
 
 
 @dataclass
 class PredictionResult:
-    """
-    Container for prediction results from the ML model.
-
-    Attributes:
-        prediction: Binary prediction (0=normal, 1=threat)
-        class_probabilities: Probability for each class {"normal": 0.7, "threat": 0.3}
-        threat_score: Probability of threat class (0.0 to 1.0)
-        confidence: Highest class probability (model confidence)
-        prediction_label: Human-readable label ("normal" or "threat")
-        important_features: Top contributing features with values and importance scores
-    """
     prediction: int
     class_probabilities: Dict[str, float]
     threat_score: float
@@ -117,41 +93,23 @@ class PredictionResult:
 
 
 class ModelService:
-    """
-    Main service for ML model operations.
-
-    Handles model loading, training, inference, and explainability.
-    Automatically loads a saved model or trains a new one if needed.
-    Integrates with MLflow for experiment tracking.
-    """
-
     def __init__(
         self,
         model_dir: Path | str = Path("models/production"),
         training_data: Path | str = Path("data/raw/synthetic_iot_data.csv"),
     ) -> None:
-        """
-        Initialize the ModelService.
-
-        Args:
-            model_dir: Directory where model files are stored
-            training_data: Path to CSV file with training data
-        """
         self.model_dir = Path(model_dir)
         self.training_data = Path(training_data)
 
-        # Model components
         self.model: Optional[RandomForestClassifier] = None
         self.scaler: Optional[StandardScaler] = None
         self.feature_names: List[str] = []
         self.threat_classes = ["normal", "threat"]
         self.model_loaded = False
 
-        # MLflow client for safer logging
         self.mlflow_client: Optional[mlflow.MlflowClient] = None
         self.mlflow_run_id: Optional[str] = None
 
-        # Configure MLflow experiment tracking
         mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
         try:
             mlflow.set_tracking_uri(mlflow_tracking_uri)
@@ -161,20 +119,9 @@ class ModelService:
         except Exception as e:
             logger.warning("MLflow initialization failed: %s. Continuing without MLflow.", e)
 
-        # Load existing model or train new one
         self._load_or_train()
 
-    # ------------------------------------------------------------------
-    # Public helpers
-    # ------------------------------------------------------------------
     def prepare_features(self, dataframe: pd.DataFrame) -> pd.DataFrame:
-        """Return only the columns used by the model.
-
-        Parameters
-        ----------
-        dataframe:
-            Input dataframe containing a superset of available features.
-        """
         available = [feature for feature in EXPECTED_FEATURES if feature in dataframe.columns]
         if not available:
             raise ModelPipelineError("Training data must contain expected IoT features.")
@@ -184,20 +131,17 @@ class ModelService:
         return dataframe[available].copy()
 
     def predict(self, feature_source: Dict[str, Any] | Iterable[Dict[str, Any]]) -> PredictionResult:
-        """Run inference and return a structured prediction result."""
         if not self.model_loaded or self.model is None or self.scaler is None:
             raise ModelPipelineError("Model not loaded; predictions are unavailable.")
 
         features = self.normalise_input(feature_source)
         scaled = self.scaler.transform(features)
 
-        # Get probabilities and derive the prediction
         probabilities = self.model.predict_proba(scaled)[0]
         prediction = int(np.argmax(probabilities))
 
         important_features = self.top_features(limit=5, value_row=features.iloc[0])
 
-        # Try to log prediction metrics to MLflow if available
         try:
             if self.mlflow_client and self.mlflow_run_id:
                 self.mlflow_client.log_metric(
@@ -226,7 +170,6 @@ class ModelService:
         )
 
     def normalise_input(self, feature_source: Dict[str, Any] | Iterable[Dict[str, Any]]) -> pd.DataFrame:
-        """Normalize input features to match model expectations."""
         if isinstance(feature_source, dict):
             frame = pd.DataFrame([feature_source])
         else:
@@ -238,10 +181,6 @@ class ModelService:
         return frame.reindex(columns=self.feature_names, fill_value=0.0)
 
     def top_features(self, limit: int = 5, value_row: Optional[pd.Series] = None) -> List[Dict[str, Any]]:
-        """Return the top contributing features by importance.
-
-        TODO: Consider adding SHAP values for better per-prediction explanations
-        """
         if not self.model_loaded or not hasattr(self.model, "feature_importances_"):
             return []
 
@@ -260,7 +199,6 @@ class ModelService:
         return results
 
     def feature_summary(self) -> Dict[str, Any]:
-        """Provide a consistent summary for the /model/info endpoint."""
         if not self.model_loaded or not hasattr(self.model, "feature_importances_"):
             return {"error": "Model does not expose feature importances."}
 
@@ -277,16 +215,12 @@ class ModelService:
         }
 
     def load_feature_statistics(self) -> Dict[str, Dict[str, float]]:
-        """Load cached feature statistics for explanations."""
         stats_path = self.model_dir / FEATURE_STATS_FILENAME
         if stats_path.exists():
             with stats_path.open("r", encoding="utf-8") as handle:
                 return json.load(handle)
         return {}
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
     def _load_or_train(self) -> None:
         try:
             if self._has_cached_model() and not self._is_lfs_pointer():
@@ -297,7 +231,7 @@ class ModelService:
                 self._train_from_source()
             self.model_loaded = True
             logger.info("Threat detection model ready (%s features)", len(self.feature_names))
-        except Exception as exc:  # pragma: no cover - defensive guard
+        except Exception as exc:
             self.model_loaded = False
             logger.error("Failed to initialise model: %s", exc)
             raise
@@ -309,16 +243,11 @@ class ModelService:
         )
 
     def _is_lfs_pointer(self) -> bool:
-        """Check if model files are Git LFS pointers instead of actual models.
-
-        This happens when someone clones the repo but doesn't have LFS set up.
-        """
         model_path = self.model_dir / MODEL_FILENAME
         if not model_path.exists():
             return False
 
         try:
-            # LFS pointers are just small text files
             with model_path.open("rb") as f:
                 first_bytes = f.read(100)
                 if b"version https://git-lfs" in first_bytes:
@@ -328,7 +257,6 @@ class ModelService:
         return False
 
     def _load_from_disk(self) -> None:
-        """Load model from disk using joblib (safer than pickle)."""
         try:
             self.model = joblib.load(self.model_dir / MODEL_FILENAME)
             self.scaler = joblib.load(self.model_dir / SCALER_FILENAME)
@@ -352,14 +280,12 @@ class ModelService:
         x_train_scaled = self.scaler.fit_transform(x_train)
         x_test_scaled = self.scaler.transform(x_test)
 
-        # Track this training run in MLflow
         try:
             with mlflow.start_run(run_name="RandomForest_Training") as run:
                 self.mlflow_run_id = run.info.run_id
 
-                # Log hyperparameters
                 params = {
-                    "n_estimators": 150,  # TODO: tune this
+                    "n_estimators": 150,
                     "max_depth": 12,
                     "class_weight": "balanced",
                     "random_state": 42,
@@ -370,26 +296,22 @@ class ModelService:
                 }
                 mlflow.log_params(params)
 
-                # Train the RF classifier
                 self.model = RandomForestClassifier(
                     n_estimators=150,
                     max_depth=12,
-                    class_weight="balanced",  # helps with imbalanced data
+                    class_weight="balanced",
                     n_jobs=-1,
                     random_state=42,
                 )
                 self.model.fit(x_train_scaled, y_train)
 
-                # Make predictions
                 predictions = self.model.predict(x_test_scaled)
 
-                # Calculate metrics
                 accuracy = accuracy_score(y_test, predictions)
                 precision = precision_score(y_test, predictions, zero_division=0)
                 recall = recall_score(y_test, predictions, zero_division=0)
                 f1 = f1_score(y_test, predictions, zero_division=0)
 
-                # Log metrics
                 mlflow.log_metrics({
                     "accuracy": accuracy,
                     "precision": precision,
@@ -399,14 +321,12 @@ class ModelService:
                     "false_positive_rate": 1 - precision,
                 })
 
-                # Log model
                 mlflow.sklearn.log_model(
                     self.model,
                     "model",
                     registered_model_name="IoT-Threat-Detection-RF",
                 )
 
-                # Log feature importance
                 feature_importance = dict(zip(self.feature_names, self.model.feature_importances_))
                 mlflow.log_dict(feature_importance, "feature_importance.json")
 
@@ -420,7 +340,6 @@ class ModelService:
         self._persist_to_disk(features)
 
     def _persist_to_disk(self, features: pd.DataFrame) -> None:
-        """Save the trained model and scaler to disk."""
         self.model_dir.mkdir(parents=True, exist_ok=True)
         joblib.dump(self.model, self.model_dir / MODEL_FILENAME)
         joblib.dump(self.scaler, self.model_dir / SCALER_FILENAME)
@@ -429,7 +348,6 @@ class ModelService:
             handle.write("\n".join(self.feature_names))
         logger.info("Persisted trained model assets to %s", self.model_dir)
 
-        # Cache simple feature statistics for explanations
         stats = {
             column: {
                 "mean": float(features[column].mean()),
@@ -461,21 +379,17 @@ class ModelService:
         return self._generate_fallback_dataset()
 
     def _generate_fallback_dataset(self, rows: int = 2000) -> pd.DataFrame:
-        """Generate synthetic data if real training data isn't available."""
         rng = np.random.default_rng(seed=42)
         data = {feature: rng.normal(loc=100.0, scale=20.0, size=rows) for feature in EXPECTED_FEATURES}
-        # Protocol flags should be binary
         for feature in ["HTTP", "HTTPS", "DNS", "Telnet", "SMTP", "SSH", "IRC", "TCP", "UDP", "DHCP", "ARP", "ICMP", "IPv", "LLC"]:
             data[feature] = rng.integers(low=0, high=2, size=rows)
         dataframe = pd.DataFrame(data)
-        threat_probability = rng.uniform(0.05, 0.3)  # some reasonable attack rate
+        threat_probability = rng.uniform(0.05, 0.3)
         dataframe["label"] = rng.binomial(1, threat_probability, size=rows)
         return dataframe
 
 
 class PredictionExplainer:
-    """Provide lightweight explanations based on model importances."""
-
     def __init__(self, model_service: ModelService) -> None:
         self.model_service = model_service
 
@@ -483,17 +397,14 @@ class PredictionExplainer:
         if not self.model_service.model_loaded:
             return {"status": "unavailable", "message": "Model not ready"}
 
-        # Prepare features for the model
         features = self.model_service.normalise_input(feature_source)
         scaled = self.model_service.scaler.transform(features)
 
-        # Get prediction and probabilities
         probabilities = self.model_service.model.predict_proba(scaled)[0]
         prediction = int(np.argmax(probabilities))
 
         top_features = self.model_service.top_features(limit=5, value_row=features.iloc[0])
 
-        # Build a human-readable explanation
         summary = self._build_summary(top_features, probabilities[1], prediction)
 
         return {
