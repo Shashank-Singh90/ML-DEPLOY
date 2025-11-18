@@ -637,6 +637,7 @@ async def explain_prediction(
 @app.get("/model/info")
 @limiter.limit("30/minute")
 async def model_info(
+    request: Request,
     explainer: PredictionExplainer = Depends(get_explainer),
     model_service: ModelService = Depends(get_model_service),
     api_key: str = Depends(get_api_key)
@@ -702,7 +703,7 @@ async def metrics_endpoint() -> Response:
 
 @app.get("/mlflow/info")
 @limiter.limit("30/minute")
-async def mlflow_info(api_key: str = Depends(get_api_key)) -> JSONResponse:
+async def mlflow_info(request: Request, api_key: str = Depends(get_api_key)) -> JSONResponse:
     """Expose MLflow tracking information."""
 
     mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001")
