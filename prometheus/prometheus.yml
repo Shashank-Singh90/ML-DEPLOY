@@ -5,7 +5,7 @@
 scrape_configs:
   - job_name: 'iot-security-api'
     static_configs:
-      - targets: ['iot-ml-api:5000']  # Using container name instead
+      - targets: ['iot-threat-api:5000']  # FIXED: Correct container name
     metrics_path: '/metrics'
     scrape_interval: 5s
     
